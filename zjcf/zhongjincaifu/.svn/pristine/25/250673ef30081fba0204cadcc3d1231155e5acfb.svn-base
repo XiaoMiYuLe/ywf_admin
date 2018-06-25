@@ -1,0 +1,66 @@
+<?php
+
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2010-12-29
+ * @version    SVN: $Id$
+ */
+class Bts_Entity_Order extends Zeed_Object {
+
+    public $order_id;
+    public $payment_id;
+    public $payment_alias;
+    public $order_number;
+    public $out_order_number;
+    public $order_type;
+    public $userid;
+    public $username;
+    public $remark;
+    public $status;
+    public $pay_time;
+    public $pay_status;
+    public $pay_type;
+    public $logistics_id;
+    public $logistics_number;
+    public $consignee_name;
+    public $consignee_region_id;
+    public $consignee_region_name;
+    public $consignee_address;
+    public $consignee_zipcode;
+    public $consignee_email;
+    public $consignee_mobile;
+    public $is_invoice;
+    public $invoice_tax;
+	public $invoice_belong;
+	public $freight;
+	public $count;
+	public $total_amount;
+	public $coupon_amount;
+	public $delivery_time;
+	public $is_cancel;
+	public $is_urgent;
+	public $is_refund;
+	public $is_del;
+	public $is_del_user;
+	public $ctime;
+	
+    /**
+     * @return Bts_Entity_Order
+     */
+    public final static function newInstance() {
+        return new self();
+    }
+
+}
+
+// End ^ Native EOL ^ UTF-8

@@ -1,0 +1,128 @@
+<?php
+
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 找回密码
+ * 支持找回方式：手机
+ * 1、手机号 + 短信验证码 + 双密码；
+ * 2、手机号 + 短信验证码 + 单密码；
+ * 3、手机号 + 短信验证码 + 下一步设置单/双密码；
+ */
+class Api_Cas_ForgotPassword
+{
+    protected static $_res = array('status' => 0, 'error' => '', 'data' => '');
+    
+    public static function run ($params = null)
+    {
+        $res = self::validate($params);
+        if ($res['status'] == 0) {
+            try {
+                /* 更新密码 */
+                Cas_Model_User::instance()->modifyPassword($res['data']['userExists']['userid'], $res['data']['password']);
+                
+                /* 返回数据过滤 */
+                unset($res['data']['password'], $res['data']['repassword'], $res['data']['userExists']);
+            } catch (Zeed_Exception $e) {
+                $res['status'] = 1;
+                $res['error'] = '更新密码失败。错误信息：' . $e->getMessage();
+            }
+        }
+        
+        return $res;
+    }
+
+    /**
+     * 验证参数
+     */
+    private static function validate ($params)
+    {
+        try {
+            /* 校验手机号码的正确性 */
+            $validatorResult = Cas_Validator::phone($params['phone']);
+            if ($validatorResult && is_array($validatorResult)) {
+                throw new Zeed_Exception(array_pop($validatorResult));
+            }
+            
+            /* 获取用户名 */
+            if (! isset($params['username']) || ! $params['username']) {
+                $params['username'] = $params['phone'];
+            }
+            
+            /* 校验用户是否存在 */
+            if (! $userExists = Cas_Model_User::instance()->fetchByUsernameType($params['username'])) {
+                throw new Zeed_Exception('该用户不存在');
+            }
+            
+            /* 判断用户名和手机号的一致性 */
+            if ($userExists['phone'] != $params['phone']) {
+                throw new Zeed_Exception('用户名和手机号不匹配，请检查后重新输入');
+            }
+            
+            /* 校验短信验证码 */
+            $result = self::checkCode($params);
+            if ($result['status'] != 0) {
+                throw new Zeed_Exception($result['error']);
+            }
+            
+            /* 校验密码 */
+            if (true !== Cas_Validator::password($params['password'])) {
+                throw new Zeed_Exception('密码无效');
+            }
+            
+            if (isset($params['repassword']) && ($params['password'] != $params['repassword'])) {
+                throw new Zeed_Exception('两次输入密码不一致');
+            }
+            
+            self::$_res['data'] = $params;
+            self::$_res['data']['userExists'] = $userExists;
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = $e->getMessage();
+        }
+        
+        return self::$_res;
+    }
+    
+    /**
+     * 验证参数 - 短信验证码
+     */
+    private static function checkCode($params)
+    {
+        try {
+            $where = array(
+                    'type' => 'phone',
+                    'action' => 'forgotpassword',
+                    'sendto' => $params['phone'],
+                    'code' => $params['code']
+            );
+            if (! $code_info = Cas_Model_Code::instance()->fetchByWhere($where)) {
+                throw new Zeed_Exception('验证码无效');
+            }
+            if (strtotime($code_info[0]['exptime']) < time()) {
+                throw new Zeed_Exception('验证码已失效，请重新获取验证码');
+            }
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = $e->getMessage();
+        }
+    
+        return self::$_res;
+    }
+}
+
+// End ^ Native EOL ^ encoding

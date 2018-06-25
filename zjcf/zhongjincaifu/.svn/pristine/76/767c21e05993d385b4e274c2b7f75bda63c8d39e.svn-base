@@ -1,0 +1,237 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+class OrderController extends BtsAdminAbstract
+{
+    public $perpage = 15;
+    
+    /**
+     * 订单列表
+     */
+    public function index()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        $ordername = $this->input->get('ordername', null);
+        $orderby = $this->input->get('orderby', null);
+        $page = (int) $this->input->get('pageIndex');
+        $key = $this->input->get('key');
+        $status = $this->input->get('status', null);
+        $start_ctime = $this->input->get('start_ctime', null);
+        $end_ctime = $this->input->get('end_ctime', null);
+        $pay_status = $this->input->get('pay_status', null);
+        $order_type = $this->input->get('order_type', null);
+        
+        $page = $page > 0 ? $page + 1 : 1;
+        $perpage = $this->input->get('pageSize', $this->perpage);
+        $offset = ($page - 1) * $perpage;
+        
+        $where = null;
+        $where = 'is_refund = 0 and is_del = 0 ';
+        if ($key) {
+            $where .= " and order_number like '%" . $key . "%'";
+        }
+        if (isset($status) && $status != null) {
+            $where .= " and status = " . $status;
+        }
+        if (isset($pay_status) && $pay_status != null) {
+            $where .= " and pay_status = " . $pay_status;
+        }
+        if (isset($start_ctime) && $start_ctime != null) {
+            $where .= " and ctime >= '" . $start_ctime . "'";
+        }
+        if (isset($end_ctime) && $end_ctime != null) {
+            $where .= " and ctime <= '" . $end_ctime . "'";
+        }
+        if (isset($order_type) && $order_type != null) {
+            $where .= " and order_type = {$order_type}";
+        }
+        
+        $order = 'order_id DESC';
+        if ($ordername) {
+            $order = $ordername . " " . $orderby;
+        }
+        
+        $listing = Bts_Model_Order::instance()->fetchByWhere($where, $order, $perpage, $offset);
+        
+        $data['listing'] = $listing ? $listing : array();
+        $data['count'] = Bts_Model_Order::instance()->getCount($where);
+        $data['ordername'] = $ordername;
+        $data['orderby'] = $orderby;
+        $data['page'] = $page;
+        $data['perpage'] = $perpage;
+        $data['order_type'] = $order_type;
+        
+        /**
+         * 支付状态:pay_status:0：未支付，1：已支付，2：已支付至担保，3：部分付款，4：部分退款，5：全额退款
+         */
+        if (! empty($data['listing'])) {
+            foreach ($data['listing'] as $k => $v) {
+                $data['listing'][$k]['createtime'] = date('Y-m-d H:i:s', $v['createtime']);
+                $user_id = (integer) $v['userid'];
+                $user = $user_id ? Cas_Model_User::instance()->getUserByUserid($user_id) : "";
+                $data['listing'][$k]['user_name'] = $user ? $user['username'] : "";
+                $data['listing'][$k]['pay_status'] = Bts_Model_Order::instance()->pay_status[$v['pay_status']];
+                $data['listing'][$k]['status'] = Bts_Model_Order::instance()->status[$v['status']];
+                $data['listing'][$k]['pay_type'] = Bts_Model_Order::instance()->pay_type[$v['pay_type']];
+                $data['listing'][$k]['logistics_number'] = $data['listing'][$k]['logistics_number'] ? $data['listing'][$k]['logistics_number'] : '';
+            }
+        }   
+	        
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'order.index');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+    
+    /**
+     * 修改
+     */
+    public function edit()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        if ($this->input->isPOST()) {
+            $this->editSave();
+            return self::RS_SUCCESS;
+        }
+        
+        $order_id = (int) $this->input->query('order_id');
+        
+        if (! $data = Bts_Model_Order::instance()->fetchByPK($order_id)) {
+            $this->setStatus(1);
+            $this->setError('查无此订单');
+            return self::RS_SUCCESS;
+        }
+        
+        $user_id = (integer) $data[0]['userid'];
+        $user = $user_id ? Cas_Model_User::instance()->getUserByUserid($user_id) : "";
+        $goods = Bts_Model_Order_Items::instance()->fetchByWhere('order_id=' . $order_id);
+        
+        $data[0]['ship_status'] = Bts_Model_Order::instance()->ship_status[$data[0]['ship_status']];
+        $data[0]['pay_type'] = Bts_Model_Order::instance()->pay_type[$data[0]['pay_type']];
+
+        $data['logistics'] = Bts_Model_Logistics::instance()->fetchByWhere("1 = 1", "logistics_id DESC",10, 0);
+        $data['user'] = $user[0];
+        $data['goods'] = $goods;
+        $data['data'] = $data[0];
+        $data['order_id'] = $order_id;
+        
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'order.edit');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+    
+    /**
+     * 修改 - 保存
+     */
+    public function editSave()
+    {
+    	$set = $this->_validate();
+    	
+    	if ($set['status'] == 0) {
+    		try {
+    			Bts_Model_Order::instance()->updateForEntity($set['data'], $set['data']['order_id']);
+    		} catch (Zeed_Exception $e) {
+    			$this->setStatus(1);
+    			$this->setError('编辑订单失败 : ' . $e->getMessage());
+    			return false;
+    		}
+    		return true;
+    	}
+    
+    	$this->setStatus($set['status']);
+    	$this->setError($set['error']);
+    	return false;
+    }
+    
+    /**
+     * 保存菜单－校验
+     */
+    private function _validate()
+    {
+    	$res = array('status' => 0, 'error' => null, 'data' => null);
+    
+    	$res['data'] = array(
+    			'order_id' => $this->input->post('order_id'),
+    			'status' => $this->input->post('status'),
+    			'pay_status' => $this->input->post('pay_status'),
+    	        'logistics_id' => $this->input->post('logistics_id'),
+    	        'logistics_number' => $this->input->post('logistics_number'),
+    			'remark' => $this->input->post('remark')
+    	);
+    
+    	/* 数据验证 */
+    	if (empty($res['data']['order_id']) || empty($res['data']['order_id'])) {
+    		$res['status'] = 1;
+    		$res['error'] = '非法操作，请重试';
+    		return $res;
+    	}
+    
+    	return $res;
+    }
+    
+    /**
+     * 订单详情
+     */
+    public function detail()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+    
+        $order_id = (int) $this->input->query('order_id');
+        
+        if (! $data = Bts_Model_Order::instance()->fetchByPK($order_id)) {
+            $this->setStatus(1);
+            $this->setError('查无此订单');
+            return self::RS_SUCCESS;
+        }
+        
+        $user_id = (integer)$data[0]['userid'];
+        $user = $user_id ? Cas_Model_User::instance()->getUserByUserid($user_id): "";
+        $goods =  Bts_Model_Order_Items::instance()->fetchByWhere('order_id=' . $order_id);
+
+        $data[0]['pay_status'] = Bts_Model_Order::instance()->pay_status[$data[0]['pay_status']];
+        $data[0]['status'] = Bts_Model_Order::instance()->status[$data[0]['status']];
+        $data[0]['payment'] = $data[0]['payment_alias'];
+        $data[0]['pay_type'] = Bts_Model_Order::instance()->pay_type[$data[0]['pay_type']];
+        $data['user'] = $user[0];
+        $data['goods'] = $goods;
+        $data['data'] = $data[0];
+        $data['order_id'] = $order_id;
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'order.detail');	
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+    
+    /**
+     * 扔进回收站
+     */
+    public function trash ()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        $issuc= Bts_Model_Order::instance()->updateForEntity(array('is_del' => 1), $this->input->post('id'));
+        if (! empty($issuc) ) {
+            $this->setError('更新成功');
+        } else {
+            $this->setStatus(1);
+            $this->setError('更新订单状态失败 ');
+        }
+    
+        return self::RS_SUCCESS;
+    }
+}
+
+// End ^ Native EOL ^ UTF-8

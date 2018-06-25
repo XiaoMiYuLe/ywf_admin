@@ -1,0 +1,44 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ *
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ *
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+class Advert_Entity_Content extends Zeed_Object
+{
+	public $content_id;
+	public $board_id;
+	public $type;
+	public $page_id;
+	public $title;
+	public $content;
+	public $attachmentid;
+	public $bind_type;
+	public $bind_source;
+	public $count;
+	public $sort_order;
+	public $status;
+	public $ctime;
+	public $mtime;
+	public $start_time;
+	public $end_time;
+
+	/**
+	 * @return Advert_Entity_Content
+	 */
+	public final static function newInstance()
+	{
+	    return new self();
+	}
+}

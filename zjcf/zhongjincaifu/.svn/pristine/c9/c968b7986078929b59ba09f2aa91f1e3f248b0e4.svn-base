@@ -1,0 +1,87 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ *
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ *
+ * @category Zeed
+ * @package Zeed_Benchmark
+ * @copyright Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author Zeed Team (http://blog.zeed.com.cn)
+ * @since 2011-10-31
+ * @version SVN: $Id$
+ */
+
+class Support_Attachment
+{
+    /**
+     * 添加一个附件
+     *
+     * @param string $srcFile
+     * @param string $suffix
+     * @param integer $userid
+     * @param string $title
+     * @param string $description
+     * @param string $lable
+     */
+    public static function upload($files)
+    {
+        $srcFile = $files['tmp_name'];
+        $pos = strrpos($files['name'], '.');
+        $suffix = $pos ? substr($files['name'], $pos + 1) : null;
+        
+        if (! file_exists($srcFile)) {
+            throw new Zeed_Exception("Source file does not exist.");
+        }
+        
+        // 计算或获取文件相关属性
+        $mimeType = Zeed_File_MIMEType::mime($srcFile);
+        $mimeType = strstr($mimeType, ';') ? substr($mimeType, 0, strrpos($mimeType, ';')) : $mimeType;
+        $data = array();
+        $data['mimetype'] = $mimeType;
+        $data['suffix'] = $suffix ? $suffix : substr($mimeType, strpos($mimeType, '/') + 1);
+        
+        $temp_mimetype = explode('/', $mimeType);
+        $data['mediatype'] = $temp_mimetype[0];
+        if (strtolower($temp_mimetype[0]) == 'image') {
+            $info = getimagesize($srcFile);
+            $data['image_width'] = $info[0];
+            $data['image_height'] = $info[1];
+        }
+        
+        $data['hashcode'] = md5_file($srcFile);
+        $data['filesize'] = filesize($srcFile);
+        $data['filepath'] = Zeed_Storage::instance()->getUri($data['hashcode'], $data['suffix']);
+        
+        // 判断格式、大小等限制 - 暂不启用
+        $config_attachment = Zeed_Config::loadGroup('attachment');
+        if (! in_array($mimeType, $config_attachment['mimetype'])) {
+            throw new Zeed_Exception("上传文件格式不正确，请检查后重新上传");
+        }
+        if (($data['filesize'] / 1024) < $config_attachment['min_size'] || ($data['filesize'] / 1024) > $config_attachment['max_size']) {
+            throw new Zeed_Exception("上传文件大小超出限制，请确保上传文件大小介于 {$config_attachment['min_size']}kb 和 {$config_attachment['max_size']}kb 之间");
+        }
+        
+        // 文件存入FS
+        Zeed_Storage::instance()->putFile($srcFile, $data['suffix'], $data['hashcode']);
+        
+        // 返回文件属性
+        $config = Zeed_Storage::instance()->getConfig();
+        $data['url'] = $config['url_prefix_b'] . $data['filepath'];
+        return $data;
+    }
+    
+    /**
+     * 从存储系统中删除一个文件
+     *
+     * @param string $fileid
+     * @param string $suffix
+     * @return boolean
+     */
+    public static function eraseStoragedFile($fileid, $suffix)
+    {
+        return Zeed_Storage::instance()->unlink($fileid, $suffix);
+    }
+}

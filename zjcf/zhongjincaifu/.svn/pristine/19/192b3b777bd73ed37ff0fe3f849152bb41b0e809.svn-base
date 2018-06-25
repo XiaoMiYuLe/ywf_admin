@@ -1,0 +1,17 @@
+{if $page_groups} 
+<div style="position:absolute;bottom:20px;text-align:center;">
+    {foreach from=$page_groups item=v}
+    <div  style="float:left;text-align:left;">      
+      <h2> {$v.group_name} </h2>
+      <ul class="submenu" style="display:block;">
+        {if $v.page_list}
+        {foreach from=$v.page_list item=page}
+        <li><a href="/page/{$v.folder}/{$v.page_folder}" class="myCatLink">{$page.title}</a></li>
+        {/foreach}
+        {/if}
+      </ul>
+    </div>
+    <div  style="float:left;width:35px;">&nbsp;&nbsp;&nbsp;&nbsp;</div>
+    {/foreach} 
+</div> 
+{/if}

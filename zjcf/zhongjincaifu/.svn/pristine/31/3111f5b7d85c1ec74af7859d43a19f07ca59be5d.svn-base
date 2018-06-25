@@ -1,0 +1,251 @@
+<?php
+
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 获取商品列表
+ * 读取表 goods_content
+ */
+class Api_Goods_GetGoodsList
+{
+
+    /**
+     * 返回参数
+     */
+    protected static $_res = array(
+            'status' => 0,
+            'error' => '',
+            'data' => ''
+    );
+
+    /**
+     *
+     * @var int 默认条数 接口可以不传递该参数
+     */
+    protected static $_perpage = 15;
+
+    /**
+     * 运行方法
+     *
+     * @param string $params            
+     * @throws Zeed_Exception
+     * @return multitype:number string
+     */
+    public static function run ($params = null)
+    {
+        $res = self::validate($params);
+        
+        if ($res['status'] == 0) {
+            
+            try {
+                
+                /* 查询条件与排序上架并且未删除 */
+                $where = " is_shelf = 1 AND is_del = 0 ";
+                
+                /* 分页属性设置 */
+                $res['data']['psize'] = $res['data']['psize'] ? $res['data']['psize'] : self::$_perpage;
+                $perpage = $res['data']['psize'];
+                $res['data']['p'] = $res['data']['p'] ? $res['data']['p'] : 1;
+                
+                $offset = $perpage * ($res['data']['p'] - 1);
+                
+                /* 搜索关键词 */
+                // 模糊搜索商品名称
+                if (! empty($res['data']['key'])) {
+                    $where .= " AND (name LIKE '%{$res['data']['key']}%')";
+                }
+                
+                // 搜索品牌 
+                if (! empty($res['data']['brand_id'])) {
+                    $where .= " AND brand_id = {$res['data']['brand_id']}";
+                }
+                
+                // 根据分类进行检索
+                if (! empty($res['data']['category'])) {
+                    /**
+                     * 处理子分类信息 搜索包括当前分类以及以下分类信息
+                     */
+                    if (! $category = Goods_Model_Category::instance()->fetchByPK($res['data']['category'])) {
+                        throw new Zeed_Exception('商品分类不存在');
+                    }
+                    
+                    /* 快速查询 所有下级分类信息 */
+                    $categoryWhere = " hid LIKE '%" . $category[0]['hid'] . "%'";
+                    $categorys = Goods_Model_Category::instance()->fetchByWhere($categoryWhere);
+                    
+                    /* 判断是否有搜索结果集 */
+                    if ($categorys) {
+                        
+                        /* 下级分类ARRAY 临时变量*/
+                        $arr = array();
+                        
+                        if (! empty($categorys)) {
+                            foreach ($categorys as $item) {
+                                $arr[] = $item['category_id'];
+                            }
+                        }
+                        
+                        $categorysql = implode(',', $arr);
+                    }
+                    /* 拼接SQL */
+                    $where .= " AND category in ({$categorysql})";
+                    
+                    /* 读取属性 */
+                    $properties = Goods_Model_Property::instance()->getPropertyByCategoryid($res['data']['category']);
+                    $brands = Goods_Model_Brand_Category::instance()->getBrandByCategoryid($res['data']['category']);
+                }
+                
+                /* 排序规则 默认排序 根据发布时间倒叙排列 */
+                $order = ' pinned DESC';
+             
+                /* 时间从新到旧 */
+                if ($res['data']['order'] == 1) {
+                    $order = ' ctime DESC';
+                }
+                
+                /* 时间从旧到新 */
+                if ($res['data']['order'] == 2) {
+                    $order = ' ctime ASC';
+                }
+                
+                /* 人气从高到低 */
+                if ($res['data']['order'] == 3) {
+                    $order = ' count_agree DESC';
+                }
+                
+                /* 价格从低到高 */
+                if ($res['data']['order'] == 4) {
+                    $order = ' price ASC';
+                }
+                
+                /* 价格从高到低 */
+                if ($res['data']['order'] == 5) {
+                    $order = ' price DESC';
+                }
+                
+                
+                /* 查询字段 */
+                $feild = array(
+                        'content_id',
+                        'name',
+                        'image_default',
+                        'price_market',
+                        'price',
+                        'stock',
+                        'sales_volume',
+                        'rank_average',
+                );
+                
+                // 属性规格筛选
+                if (! empty($res['data']['property'])) {
+                   
+                   $arr = explode(',',$res['data']['property']);
+                   
+                   if (is_array($arr) && $arr) {
+                       
+                       $temp = 0;
+                       foreach ($arr as $v) {
+                           
+                           $propertys = explode(':',$v);
+                           if ($temp != 0) {
+                               $where .= " OR ( property_id = {$propertys[0]} AND property_value_id = {$propertys[1]} )";
+                           }else{
+                               $where .= " AND ( property_id = {$propertys[0]} AND property_value_id = {$propertys[1]} )";
+                           }
+                           
+                           $temp++;
+                       }
+                      
+                   }
+                 
+                   $contents =  Goods_Model_Content::instance()->getGoodsByProperty($where, $order, $perpage, $offset, $feild);
+                   $count = Goods_Model_Content::instance()->getCountGoodsByProperty($where);
+                   
+                } else {
+                    
+                    /* 读取商品数据 */
+                    $contents = Goods_Model_Content::instance()->fetchByWhere($where, $order, $perpage, $offset, $feild);
+                    $count = Goods_Model_Content::instance()->getCount($where);
+                }
+                
+                /* 如果商品数据存在 进行二次格式化，处理图片和其他参数 */
+                if (! empty($contents)) {
+                    foreach ($contents as $k => $v) {
+                        
+                        // 图片宽和高
+                        if ($v['image_default']) {
+                            
+                            $img_info = Support_Image_Info::Wh($v['image_default']);
+                            
+                            $contents[$k]['image_default'] = $img_info[0]['url_whole'];
+                            $contents[$k]['width'] = $img_info[0]['width'];
+                            $contents[$k]['height'] = $img_info[0]['height'];
+                        } else {
+                            $contents[$k]['image_default'] = '';
+                            $contents[$k]['width'] = '';
+                            $contents[$k]['height'] = '';
+                        }
+                        
+                        $contents[$k]['serialize_specs'] = json_decode($v['serialize_specs'],true);
+                    }
+                }
+                
+                /* 计算总页数 */
+                $pageCount = ceil($count / $res['data']['psize']);
+                
+                if ($res['data']['p'] > $pageCount) {
+                    $res['data']['p'] = $pageCount;
+                }
+                
+                /* 数据数组 总条数 当前页码 总页数 数据字典 */
+                $list = array(
+                        'totalnum' => $count,
+                        'currentpage' => $res['data']['p'],
+                        'totalpage' => $pageCount,
+                        'properties' => $properties,
+                        'brands' => $brands,
+                        'info' => (array) $contents
+                );
+                $list = json_encode($list);
+                    
+            } catch (Zeed_Exception $e) {
+                self::$_res['status'] = 1;
+                self::$_res['error'] = '获取商品出错。错误信息：' . $e->getMessage();
+                return self::$_res;
+            }
+            self::$_res['data'] = json_decode($list,true);
+        }
+        return self::$_res;
+    }
+
+    /**
+     *
+     *
+     * 验证方法
+     * 
+     * @param array $params            
+     * @return multitype:number string
+     */
+    public static function validate ($params)
+    {
+        ksort($params);
+        self::$_res['data'] = $params;
+        return self::$_res;
+    }
+}
+
+// End ^ Native EOL ^ encoding

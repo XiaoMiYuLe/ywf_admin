@@ -1,0 +1,149 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Cyrano
+ * @since      2015-09-06
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 发送验证码
+ * 方式：短信、邮件
+ */
+class Api_Cas_SendCode
+{
+    /**
+     * 返回参数
+     */
+    protected static $_res = array('status' => 0, 'data' => '111111', 'error' => null);
+    protected static $_allowFields = array('sendto','action');
+    private static $_type = 'phone'; // 定义类型默认为短信
+    
+    /**
+     * 接口运行方法
+     *
+     * @param array $params
+     * @return array
+     */
+    public static function run($params = null)
+    {
+
+        $res = self::validate($params);
+        if ($res['status'] === 0) {
+            try {
+                /* 发送验证码 */
+                if (self::$_type == 'email') {
+                    $code_info = Support_Sms_Guoji_Send::run($res['data']['phone'], $res['data']['code']);
+                } else {
+                    // 获取短信验证码
+                    $code_info = self::getSmsCode();
+                    
+                    // 发送
+                    $send_result = Support_Sms_Send::run($res['data']['phone'], $code_info['code']);
+                    if ($send_result['status'] != 0) {
+                        throw new Zeed_Exception($send_result['error']);
+                    }
+                }
+                
+                /* 处理返回数据 */
+                $res['data'] = $code_info;
+            } catch (Exception $e) {
+                $res['status'] = 1;
+                $res['error'] = "发送验证码失败。错误信息：" . $e->getMessage();
+            }
+        }
+        return $res;
+    }
+    
+    /**
+     * 验证参数
+     */
+    public static function validate($params)
+    {
+        try {
+            /* 过滤接收参数 */
+            $set = array();
+            foreach (self::$_allowFields as $f) {
+                $set[$f] = isset($params[$f]) ? $params[$f] : null;
+            }
+            self::$_res['data'] = ! empty($set) ? $set : '';
+            
+            /* 校验参数 */
+            if (! isset(self::$_res['data']['sendto'])) {
+                throw new Zeed_Exception('参数 sendto 未提供');
+            }
+            if (! isset(self::$_res['data']['action'])) {
+                throw new Zeed_Exception('参数 action 未提供');
+            }
+
+            /* 判断发送验证码的方式 */
+            if (@Cas_Validator::email(self::$_res['data']['sendto'])) {
+                self::$_type = 'email';
+            }
+
+            /* 如果是短信方式，则校验手机号是否合法 */
+            if (self::$_type == 'phone') {
+
+                $validatorResult = Cas_Validator::phone(self::$_res['data']['sendto']);
+                if ($validatorResult && is_array($validatorResult)) {
+                    throw new Zeed_Exception(array_pop($validatorResult));
+                }
+            }
+
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error'] = $e->getMessage();
+        }
+        
+        return self::$_res;
+    }
+    
+    /**
+     * 获取短信验证码
+     * 1、检查数据库中是否有同类型、且未过期的验证码记录，若有，则直接返回；
+     * 2、以上条件不满足时，重新生成验证码，并返回；
+     */
+    private static function getSmsCode()
+    {
+        /* 查询数据库 */
+        $where = array(
+                'type' => self::$_type,
+                'action' => self::$_res['data']['action'],
+                'sendto' => self::$_res['data']['sendto'],
+        );
+        $where[] = "exptime >= '" . DATENOW . "'";
+        
+        $code_info = Cas_Model_Code::instance()->fetchByWhere($where);
+        
+        /* 若没有，则重新生成 */
+        if (empty($code_info)) {
+            // 生成验证码
+            $code_info = Support_Sms_Abstract::buildCode();
+            
+            // 本地记录验证码信息
+            $set['type'] = self::$_type;
+            $set['action'] = self::$_res['data']['action'];
+            $set['sendto'] = self::$_res['data']['sendto'];
+            $set['code'] = $code_info['code'];
+            $set['ctime'] = date(DATETIME_FORMAT);
+            $set['exptime'] = $code_info['exptime'];
+            
+            Cas_Model_Code::instance()->addForEntity($set);
+        } else {
+            $code_info = $code_info[0];
+        }
+        
+        return array('code' => $code_info['code'], 'exptime' => $code_info['exptime']);
+    }
+}
+
+// End ^ Native EOL ^ encoding

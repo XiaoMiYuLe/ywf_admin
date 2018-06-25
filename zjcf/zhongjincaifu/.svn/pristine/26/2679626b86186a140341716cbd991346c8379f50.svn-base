@@ -1,0 +1,488 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+class IndexController extends GoodsAdminAbstract
+{
+    public $perpage = 15;
+    
+    /**
+     * 商品后台首页
+     */
+    public function index()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        /* 接收参数 */
+        $ordername = $this->input->get('ordername', null);
+        $orderby = $this->input->get('orderby', null);
+        $page = (int) $this->input->get('pageIndex', 0);
+        $perpage = $this->input->get('pageSize', $this->perpage);
+        $key = trim($this->input->get('key'));
+        $category_id = (int) $this->input->get('category', 0);
+        $brand_id = (int) $this->input->get('brand_id', 0);
+        $is_shelf = (int) $this->input->get('is_shelf', -1);
+        $price_min = $this->input->get('price_min', 0);
+        $price_max = $this->input->get('price_max', 0);
+        $content_id = (int) $this->input->get('content_id', 0); // 若传递有该参数，则在列表中将排除该商品
+        
+        /* ajax 加载数据 */
+        if ($this->input->isAJAX()) {
+        	$offset = $page * $perpage;
+        	$page = $page + 1;
+        	
+        	$where['is_del'] = 0;
+        	$where['parent_id'] = 0;
+            if ($category_id) {
+        	    $where['category'] = $category_id;
+        	}
+        	if ($brand_id) {
+        	    $where['brand_id'] = $brand_id;
+        	}
+        	if ($is_shelf > -1) {
+        	    $where['is_shelf'] = $is_shelf;
+        	}
+        	if ($price_min > 0) {
+        	    $where[] = 'price >= ' . $price_min;
+        	}
+        	if ($price_max > 0) {
+        	    $where[] = 'price <= ' . $price_max;
+        	}
+        	if ($content_id) {
+        	    $where[] = "content_id != {$content_id}";
+        	}
+        	if (! empty($key)) {
+        		$where[] = "(name LIKE '%{$key}%' or sku LIKE '%{$key}%')";
+        	}
+        	
+        	$order = 'ctime DESC';
+        	if ($ordername) {
+        		$order = $ordername . " " . $orderby;
+        	}
+        	
+        	$contents = Goods_Model_Content::instance()->fetchByWhere($where, $order, $perpage, $offset);
+        	$data['count'] = Goods_Model_Content::instance()->getCount($where);
+        	
+        	/* 处理一些基本信息 */
+        	$config = Zeed_Storage::instance()->getConfig();
+        	if (! empty($contents)) {
+        	    foreach ($contents as &$v) {
+        	        // 处理图片路径问题
+        	        $v['image_default'] = $config['url_prefix_b'] . $v['image_default'];
+        	        
+        	        // 处理分类名称
+        	        $category = Goods_Model_Category::instance()->fetchByPK($v['category'], array('category_name'));
+        	        if (! empty($category)) {
+        	            $v['category_name'] = $category[0]['category_name'];
+        	        }
+        	        
+        	        // 处理品牌
+        	        $brand = Goods_Model_Brand::instance()->fetchByPK($v['brand_id'], array('brand_name'));
+        	        if (! empty($brand)) {
+        	            $v['brand_name'] = $brand[0]['brand_name'];
+        	        }
+        	    }
+        	}
+        	
+        	$data['contents'] = $contents ? $contents : array();
+        }
+        
+        /* 获取所有分类信息 */
+        $data['categories'] = Goods_Model_Category::instance()->getAllCategoriesForSelect();
+        
+        /* 获取所有品牌信息 */
+        $data['brands'] = Goods_Model_Brand::instance()->fetchAll();
+		
+        $data['ordername'] = $ordername;
+        $data['orderby'] = $orderby;
+        $data['page'] = $page;
+        $data['perpage'] = $perpage;
+        $data['category_id'] = $category_id;
+        
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'index.index');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+    
+    /**
+     * 添加商品
+     */
+    public function add()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        if ($this->input->isPOST()) {
+            $this->addSave();
+            return self::RS_SUCCESS;
+        }
+        
+        /* 获取所有分类 - 下拉选项型 */
+        $order_category = array('hid ASC', 'sort_order ASC');
+        $data['categories'] = Goods_Model_Category::instance()->getAllCategoriesForSelect($order_category);
+     
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'index.edit');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+    
+    /**
+     * 添加商品 - 保存
+     */
+    public function addSave()
+    {
+        $data = $this->prepareSave();
+        if ($data['status'] == 0) {
+            if (! $content_id_insert = ContentHelper::addContent($data['data'])) {
+                $this->setStatus(1);
+                $this->setError('添加商品失败。');
+                return false;
+            }
+            $data['data']['content_id'] = $content_id_insert;
+            $this->setData('data', $data['data']);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 编辑商品
+     */
+    public function edit()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+    
+        if ($this->input->isPOST()) {
+            $this->editSave();
+            return self::RS_SUCCESS;
+        }
+    
+        $content_id = (int) $this->input->get('content_id');
+        
+        /* 查询商品主体信息 */
+        if (! $content = Goods_Model_Content::instance()->fetchByPK($content_id)) {
+            $this->setStatus(1);
+            $this->setError('查无此商品');
+            return self::RS_SUCCESS;
+        }
+        $content = $content[0];
+        
+        /* 查询商品详细信息，并和商品主体信息合并 */
+        $content_detail = Goods_Model_Content_Detail::instance()->fetchByPK($content_id);
+        if (! empty($content_detail)) {
+            $content = array_merge($content, $content_detail[0]);
+        }
+        
+        /* 查询商品扩展属性信息 - 不用做任何处理 */
+        
+        /* 处理商品图片信息 */
+        $config_attachment = Zeed_Storage::instance()->getConfig();
+        if ($content['attachment']) {
+            $attachment_ids_temp = array();
+            $attachment_arr = explode(',', $content['attachment']);
+            $content_attachment = Trend_Model_Attachment::instance()->fetchByPK($attachment_arr);
+            if (! empty($content_attachment)) {
+                foreach ($content_attachment as $k => &$v) {
+                    $v['thumbsrc'] = $this->_generateThumbnailsUrl($v['filepath'], $v['mimetype'], 'AM');
+                    $v['url'] = $config_attachment['url_prefix_b'] . $v['filepath'];
+                    $attachment_ids_temp[$k] = 'attachmentid_' . $v['attachmentid'];
+                }
+            }
+            $content['attachment_ids'] = implode(',', $attachment_ids_temp);
+        }
+        
+        /* 查询关联商品信息 */
+        $content_related = Goods_Model_Content::instance()->fetchByPK(explode(',', $content['related']), array('content_id', 'name'));
+        
+        /* 获取所有分类 - 下拉选项型 */
+        $order_category = array('hid ASC', 'sort_order ASC');
+        $data['categories'] = Goods_Model_Category::instance()->getAllCategoriesForSelect($order_category);
+        
+        $data['content_id'] = $content_id;
+        $data['content'] = $content;
+        
+        //如果开启规格
+        $spec_array = NULL;
+        if($content['is_spec']){
+        
+            $spec_array[] = array(
+                'content_id'=>$content['content_id'],'is_del'=>$content['is_del'],
+                'property_related'=>$content['property_related'],'sku'=>$content['sku'],
+                'weight'=>$content['weight'], 'price'=>$content['price'],'price_market'=>$content['price_market'],
+                'price_cost'=>$content['price_cost'],'stock'=>$content['stock'],'is_shelf'=>$content['is_shelf']
+            );
+        
+            $content_s = Goods_Model_Content::instance()->fetchByWhere(array('parent_id'=>$content_id,'is_del'=>0),'content_id asc','','','');
+            if (!empty($content_s)){
+                foreach ($content_s as $item){
+                    $spec_array[] = array(
+                        'content_id'=>$item['content_id'],'is_del'=>$item['is_del'],
+                        'property_related'=>$item['property_related'],'sku'=>$item['sku'],
+                        'weight'=>$item['weight'], 'price'=>$item['price'],'price_market'=>$item['price_market'],
+                        'price_cost'=>$item['price_cost'],'stock'=>$item['stock'],'is_shelf'=>$item['is_shelf']
+                    );
+                }
+            }
+        }
+        
+        $data['content_specification'] = json_encode($spec_array);
+        
+        $data['content_attachment'] = $content_attachment ? $content_attachment : null;
+        $data['content_related'] = $content_related ? $content_related : null;
+        
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'index.edit');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+    
+    /**
+     * 编辑商品 - 保存
+     */
+    public function editSave()
+    {
+        $data = $this->prepareSave();
+        if ($data['status'] == 0) {
+            if (! ContentHelper::updateContentByContentid($data['data']['content_id'], $data['data'])) {
+                $this->setStatus(1);
+                $this->setError('编辑商品失败。');
+                return false;
+            }
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 商品上架/下架
+     * 支持 AJAX 和 GET 请求删除
+     * 支持参数: content_id(int, array, 逗号分割)
+     */
+    public function publish()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        /* 获取参数，并做基础处理 */
+        $content_ids = $this->validateContentid();
+        $status = $this->input->query('status', 0);
+        
+        if (!empty($content_ids)) {
+            ContentHelper::publishContent($content_ids, $status);
+        }
+    
+        return self::RS_SUCCESS;
+    }
+    
+    /**
+     * 删除 - 扔进回收站
+     * 支持 AJAX 和 GET 请求删除
+     * 支持参数: content_id(int, array, 逗号分割)
+     * 删除: 设置status, 删除 Content 及相关资源
+     * 
+     * @todo 删除 Content 及相关资源
+     */
+    public function trash()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        /* 获取参数，并做基础处理 */
+        $content_ids = $this->validateContentid();
+        
+        if (! empty($content_ids)) {
+            ContentHelper::trashContentByContentid($content_ids);
+        }
+        
+        return self::RS_SUCCESS;
+    }
+    
+    /**
+     * 根据分类获取相关联的品牌信息
+     */
+    public function getBrandByCategoryid()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+    
+        $category_id = (int) $this->input->query('category_id');
+        
+        if (! Goods_Model_Category::instance()->fetchByPK($category_id)) {
+            $this->setStatus(1);
+            $this->setError('查无此分类');
+            return self::RS_SUCCESS;
+        }
+        
+        $brands = Goods_Model_Brand_Category::instance()->getBrandByCategoryid($category_id);
+        
+        $data['brands'] = $brands;
+        
+        $this->setData('data', $data);
+        return self::RS_SUCCESS;
+    }
+    
+    /**
+     * 根据分类获取相关联的属性信息
+     */
+    public function getPropertyByCategoryid()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+    
+        $category_id = (int) $this->input->query('category_id');
+        $is_spec = (int) $this->input->query('is_spec', 0);
+        
+        if (! Goods_Model_Category::instance()->fetchByPK($category_id)) {
+            $this->setStatus(1);
+            $this->setError('查无此分类');
+            return self::RS_SUCCESS;
+        }
+        
+        /* 获取关联分类的属性或属性组 */
+        $where = "category_id = {$category_id}";
+        $order = "sort_order ASC";
+        if (! $property_category = Goods_Model_Property_Category::instance()->fetchByWhere($where, $order)) {
+            $this->setStatus(1);
+            $this->setError('该分类没有绑定任何属性或属性组');
+            return self::RS_SUCCESS;
+        }
+        
+        /* 遍历结果，以取得属性的可选值 */
+        $properties = array();
+        foreach ($property_category as &$v) {
+            if ($v['property_group_id'] > 0) { // 处理属性分组
+                // 获取分组下属性列表
+                $property_listing = Trend_Model_Property_To_Group::instance()->getPropertyInfo($v['property_group_id']);
+                
+                // 获取属性值
+                if (! empty($property_listing)) {
+                    foreach ($property_listing as &$vv) {
+                        // 判断是否是读取规格
+                        if ($is_spec > 0 && $vv['is_spec'] != $is_spec) {
+                            continue;
+                        }
+                        
+                        $where_property_value = "property_id = {$vv['property_id']} AND status = 1";
+                        $order_property_value = "sort_order ASC";
+                        $vv['values'] = Trend_Model_Property_Value::instance()->fetchByWhere($where_property_value, $order_property_value);
+                        
+                        $properties[] = $vv;
+                    }
+                }
+            } else { // 处理属性
+                // 获取属性额外信息
+                $property = Trend_Model_Property::instance()->fetchByPK($v['property_id']);
+                
+                // 判断是否是读取规格
+                if ($is_spec > 0 && $property[0]['is_spec'] != $is_spec) {
+                    continue;
+                }
+                
+                $v['label_name'] = $property[0]['label_name'];
+                
+                // 获取属性值
+                $where_property_value = "property_id = {$v['property_id']} AND status = 1";
+                $order_property_value = "sort_order ASC";
+                $v['values'] = Trend_Model_Property_Value::instance()->fetchByWhere($where_property_value, $order_property_value);
+                
+                $properties[] = $v;
+            }
+        }
+        
+        $properties_temp = NULL;
+        foreach ($properties as $item){
+            $properties_temp[$item['property_id']] = $item;
+        }
+        
+        $properties = $properties_temp;
+        sort($properties);
+        $data['properties'] = $properties;
+        
+        $this->setData('data', $data);
+        return self::RS_SUCCESS;
+    }
+    
+    /**
+     * 上传附件
+     */
+    public function uploadFile ()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+    
+        if ($_FILES['files']['error'] == UPLOAD_ERR_OK) {
+            /* 上传参数处理 */
+            $upload_arr = $_FILES['files'];
+            $srcFile = $upload_arr['tmp_name'];
+            $pos = strrpos($upload_arr['name'], '.');
+            $suffix = $pos ? substr($upload_arr['name'], $pos + 1) : null;
+            $userid = Trend_Authorization::getLoggedInUserid();
+            $title = $pos ? substr($upload_arr['name'], 0, $pos) : $upload_arr['name'];
+            $description = '';
+            $label = '';
+    
+            /* 执行上传 */
+            $attach = Trend_Attachment::add($srcFile, $suffix, $userid, $title, $description, $label);
+            $attach['thumbsrc'] = $this->_generateThumbnailsUrl($attach['filepath'], $attach['mimetype'], 'AM');
+            if (is_array($attach) && isset($attach['attachmentid']) && $attach['attachmentid'] > 0) {
+                $data['data'] = $attach;
+            } else {
+                $this->setStatus(1);
+                $this->setError('上传文件失败');
+                return self::RS_SUCCESS;
+            }
+        } else {
+            $this->setStatus(1);
+            $this->setError('好像发生一些意外错误呢');
+            return self::RS_SUCCESS;
+        }
+    
+        $this->setData('data', $data);
+        return self::RS_SUCCESS;
+    }
+    
+    /**
+     * 产生缩略图(JPEG格式)地址或文件类型图标地址 注意: 缩略图的扩展名可能不代表其真实的MIMEType
+     *
+     * @param boolean $filepath
+     * @param string $mimetype 文件的MIMEType类型
+     * @param string $thumbScheme 指定的已配置缩略图方案
+     * @param string $urlPrefix 上传目录可访问地址
+     * @return string 返回缩略图地址
+     */
+    protected function _generateThumbnailsUrl($filepath, $mimetype, $thumbScheme, $urlPrefix = null)
+    {
+        if (substr($mimetype, 0, 6) != 'image/') {
+            $configIconsAttachment = Zeed_Config::loadGroup('icon.attachment');
+            if (! isset($configIconsAttachment['list'][$mimetype])) {
+                $thumbUrl = $configIconsAttachment['default'];
+            } else {
+                $thumbUrl = $configIconsAttachment['list'][$mimetype];
+            }
+            return $thumbUrl;
+        }
+    
+        $thumbUrl = '';
+        $suffix = substr($filepath, strrpos($filepath, '.'));
+        $thumbUrl = str_replace($suffix, '_' . $thumbScheme . $suffix, $filepath);
+    
+        if (is_null($urlPrefix)) {
+            $config = Zeed_Storage::instance()->getConfig();
+            $thumbUrl = $config['url_thumb_mng_prefix'] . $thumbUrl;
+        } else {
+            $thumbUrl = $urlPrefix . $thumbUrl;
+        }
+    
+        return $thumbUrl;
+    }
+}
+
+// End ^ Native EOL ^ UTF-8

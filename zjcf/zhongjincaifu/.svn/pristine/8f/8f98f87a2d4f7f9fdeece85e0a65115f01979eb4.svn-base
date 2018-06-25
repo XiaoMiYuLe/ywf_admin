@@ -1,0 +1,217 @@
+<?php
+
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 用户注册
+ * 支持注册方式：手机、邮箱、用户名
+ * 1、手机号 + 短信验证码 + 双密码 + 扩展信息；
+ * 2、手机号 + 短信验证码 + 单密码 + 扩展信息；
+ * 3、手机号 + 短信验证码 + 下一步设置单/双密码 + 扩展信息；
+ * 4、用户名 + 密码 + 扩展信息；
+ * 5、邮箱 + 密码 + 扩展信息；
+ */
+class Api_Cas_Signup
+{
+    protected static $_res = array('status' => 0, 'error' => '', 'data' => '');
+    
+    private static $_default_encrypt = 'Md5Md5'; // 定义用户密码的加密方式
+    private static $_default_status = 1; // 定义默认启用状态为开启
+    private static $_default_is_verify = 0; // 定义默认审核状态为不通过
+    private static $_user_group_id = 1; // 定义用户默认分组为普通用户组
+    private static $_user_lv_id = 1; // 定义用户默认级别为初级会员
+
+    public static function run ($params = null)
+    {
+        $res = self::validate($params);
+        if ($res['status'] == 0) {
+            try {
+                /* 注册 */
+                $res['data']['username'] = self::register($res['data']);
+                
+                /* 返回数据过滤 */
+                unset($res['data']['password'], $res['data']['repassword'], $res['data']['phone'], $res['data']['email']);
+            } catch (Zeed_Exception $e) {
+                $res['status'] = 1;
+                $res['error'] = '注册失败。错误信息：' . $e->getMessage();
+            }
+        }
+        
+        return $res;
+    }
+
+    /**
+     * 验证参数
+     */
+    private static function validate ($params)
+    {
+        try {
+            if (true !== Cas_Validator::password($params['password'])) {
+                throw new Zeed_Exception('密码无效');
+            }
+            
+            if (isset($params['repassword']) && $params['password'] != $params['repassword']) {
+                throw new Zeed_Exception('两次输入密码不一致');
+            }
+            
+            $mode = isset($params['simple']) ? $params['simple'] : 2;
+            
+            switch ($mode) {
+                /* 邮箱注册 */
+                case 9:
+                    $params['email'] = trim($params['username']);
+                    
+                    if (! @Cas_Validator::email($params['email'])) {
+                        throw new Zeed_Exception('电子邮箱地址无效');
+                    }
+                    $userExists = Cas_Model_User::instance()->verifyUserExistent($params['email'], 'email');
+                    if ($userExists) {
+                        throw new Zeed_Exception('电子邮箱已存在');
+                    }
+                    
+                    // 校验邮箱验证码
+                    if ($params['code']) {
+                        $where_code = array(
+                                'type' => 'email',
+                                'action' => 'register',
+                                'sendto' => $params['email'],
+                                'code' => $params['code']
+                        );
+                        if (! $code_info = Cas_Model_Code::instance()->fetchByWhere($where_code)) {
+                            throw new Zeed_Exception('验证码无效');
+                        }
+                        if (strtotime($code_info[0]['exptime']) < time()) {
+                            throw new Zeed_Exception('验证码已失效，请重新获取验证码');
+                        }
+                    }
+                break;
+                
+                /* 手机注册 */
+                case 2:
+                    $params['phone'] = trim($params['username']);
+                    
+                    // 校验手机号码的正确性
+                    $validatorResult = Cas_Validator::phone($params['phone']);
+                    if ($validatorResult && is_array($validatorResult)) {
+                        throw new Zeed_Exception(array_pop($validatorResult));
+                    }
+                    
+                    // 校验手机号码是否已被注册
+                    $userExists = Cas_Model_User::instance()->verifyUserExistent($params['phone'], 'phone');
+                    if ($userExists) {
+                        throw new Zeed_Exception('手机号已存在');
+                    }
+                    
+                    // 校验手机验证码
+                    if ($params['code']) {
+                        $where_code = array(
+                                'type' => 'phone',
+                                'action' => 'register',
+                                'sendto' => $params['phone'],
+                                'code' => $params['code']
+                        );
+                        if (! $code_info = Cas_Model_Code::instance()->fetchByWhere($where_code)) {
+                            throw new Zeed_Exception('验证码无效');
+                        }
+                        if (strtotime($code_info[0]['exptime']) < time()) {
+                            throw new Zeed_Exception('验证码已失效，请重新获取验证码');
+                        }
+                    }
+                break;
+                
+                /* 用户名注册 */
+                case 1:
+                default:
+                    $params['email'] = isset($params['email']) ? $params['email'] : '';
+                    $params['realname'] = isset($params['realname']) ? $params['realname'] : '';
+                    $params['idcard'] = isset($params['idcard']) ? $params['idcard'] : '';
+                    $params['username'] = trim($params['username']);
+                    
+                    if (! Cas_Validator::username($params['username'])) {
+                        throw new Zeed_Exception('用户名无效');
+                    }
+                    $userExists = Cas_Model_User::instance()->isUserExistent($params['username']);
+                    if ($userExists) {
+                        throw new Zeed_Exception('用户名已存在');
+                    }
+                break;
+            }
+            
+            self::$_res['data'] = $params;
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = $e->getMessage();
+        }
+        
+        return self::$_res;
+    }
+    
+    /**
+     * 创建用户
+     *
+     * @param array $params
+     * @return boolean|array
+     */
+    private static function register($set)
+    {
+        $passwordSalt = Zeed_Encrypt::generateSalt();
+        
+        if (empty($set['username']) || empty($set['password'])) {
+            throw new Zeed_Exception('参数错误');
+        }
+        $password = Zeed_Encrypt::encode(self::$_default_encrypt, $set['password'], $passwordSalt);
+        
+        $userSet = array(
+                'username' => $set['username'],
+                'user_group_id' => isset($set['user_group_id']) ? $set['user_group_id'] : self::$_user_group_id,
+                'user_lv_id' => isset($set['user_lv_id']) ? $set['user_lv_id'] : self::$_user_lv_id,
+                'password' => $password,
+                'phone' => $set['phone'],
+                'salt' => $passwordSalt,
+                'encrypt' => self::$_default_encrypt,
+                'email' => $set['email'],
+                'realname' => $set['realname'],
+                'idcard' => $set['idcard'],
+                'gender' => $set['gender'],
+                'birthday' => $set['birthday'],
+                'region_id' => $set['region_id'],
+                'address' => $set['address'],
+                'status' => isset($set['status']) ? $set['status'] : self::$_default_status,
+                'is_verify' => isset($set['is_verify']) ? $set['is_verify'] : self::$_default_is_verify,
+                'ctime' => date(DATETIME_FORMAT),
+                'mtime' => date(DATETIME_FORMAT),
+        );
+        try {
+            $userSet = array_merge($set, $userSet);
+            foreach ($userSet as $k => $v) {
+                if (empty($v)) {
+                    unset($userSet[$k]);
+                }
+            }
+
+            $userid = Cas_Model_User::instance()->add($userSet);
+            
+        } catch (Zeed_Exception $e) {
+            var_dump($e->getMessage());
+            return false;
+        }
+
+        return $userSet['username'] ;
+    }
+}
+
+// End ^ Native EOL ^ encoding

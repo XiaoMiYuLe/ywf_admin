@@ -1,0 +1,95 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 重置密码
+ */
+class Api_Cas_ResetPassword
+{
+    protected static $_res = array('status' => 0, 'error' => '', 'data' => '');
+    
+    public static function run($params = null)
+    {
+        $res = self::validate($params);
+        if ($res['status'] == 0) {
+        	try {
+        		/* 检查用户是否存在 */
+        		if (! $userExists = Cas_Model_User::instance()->fetchByPK($res['data']['userid'])) {
+        		    throw new Zeed_Exception('该用户不存在');
+        		}
+        		$userExists = current($userExists);
+        		
+        		/* 检查用户密码 */
+        		if (! Cas_Model_User::instance()->checkPassword($userExists['userid'], $res['data']['old_password'])) {
+        		    throw new Zeed_Exception('原密码不正确');
+        		}
+        		
+        		/* 密码重置 */
+        		Cas_Model_User::instance()->modifyPassword($res['data']['userid'], $res['data']['password']);
+        	} catch (Zeed_Exception $e) {
+        		$res['status'] = 1;
+        		$res['error']  = '重置密码失败。错误信息：' . $e->getMessage();
+                $res['data']['token'] = Cas_Token::getTokenByUserId($res['data']['userid']);
+                unset($res['data']['userid']);
+        		return $res;
+        	}
+        }
+        $res['data']['token'] = Cas_Token::getTokenByUserId($res['data']['userid']);
+        unset($res['data']['userid']);
+        return $res;
+    }
+    
+    /**
+     * 验证参数
+     */
+    public static function validate($params)
+    {
+    	if (! isset($params['token']) || strlen($params['token']) < 1) {
+    		self::$_res['status'] = 1;
+    		self::$_res['error']  = '参数 token 未提供或格式错误';
+    		return self::$_res;
+    	}
+    	if (! isset($params['old_password']) || strlen($params['old_password']) < 6) {
+    		self::$_res['status'] = 1;
+    		self::$_res['error']  = '参数 old_password 必须提供，且长度至少为6位';
+    		return self::$_res;
+    	}
+    	if (! isset($params['password']) || strlen($params['password']) < 6) {
+    		self::$_res['status'] = 1;
+    		self::$_res['error']  = '参数 password 必须提供，且长度至少为6位';
+    		return self::$_res;
+    	}
+//     	if ($params['old_password'] == $params['password']) {
+//     	    self::$_res['status'] = 1;
+//     	    self::$_res['error']  = '新密码不能旧密码相同';
+//     	    return self::$_res;
+//     	}
+    	if ($params['password'] != $params['repassword']) {
+    	    self::$_res['status'] = 1;
+    	    self::$_res['error']  = '输入的两次新密码不同';
+    	    return self::$_res;
+    	}
+
+        $params['userid'] = Cas_Token::getUserIdByToken($params['token']);
+        unset($params['token']);
+
+        self::$_res['data'] = $params;
+        return self::$_res;
+    }
+}
+
+// End ^ Native EOL ^ encoding

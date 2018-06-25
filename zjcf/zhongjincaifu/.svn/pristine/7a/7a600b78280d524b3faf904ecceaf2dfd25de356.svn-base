@@ -1,0 +1,111 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 获取广告
+ * @todo 读取表 advert_content
+ */
+class Api_Advert_GetContent
+{
+    protected static $_res = array('status' => 0, 'error' => '', 'data' => '');
+    
+    public static function run($params = null)
+    {
+        $res = self::validate($params);
+        if ($res['status'] == 0) {
+            try {
+                /* 取得是否开启redis */
+                $redis_set = Trend_Helper_Setting::platform('name');
+                $redis_val = empty($redis_set) ? 0 : $redis_set[0]['val'];
+                
+                $cache_key = md5(json_encode($res['data']));
+                $data      = $redis_val == 1 ? Trend_Model_Redis::instance()->get($cache_key) : false;
+                if (!$data) {
+                    $board_id_arr = explode(',', $res['data']['board_id']);
+                    $board_id_arr = array_unique($board_id_arr);
+                    
+                    $where['page_id'] = $res['data']['page_id'];
+                    
+                    $advert = array();
+                    foreach ($board_id_arr as $kk => $vv) {
+                        $where['board_id'] = $vv;
+                    
+                        /* 所查字段 */
+                        $cols = array('content_id', 'type', 'title', 'content', 'bind_type', 'bind_source');
+                        $advert_board = Advert_Model_Content::instance()->fetchByWhere($where, null, null, null, $cols);
+                    
+                        /* 如果广告类型为图片，则对广告图片地址进行处理 */
+                        $advert_type_pic = array(1, 3, 4, 5, 6);
+                        $board = Advert_Model_Board::instance()->fetchByPK($vv);
+                        if (in_array($board[0]['type'], $advert_type_pic)) {
+                            if (! empty($advert_board)) {
+                                $store_url = Zeed_Config::loadGroup('urlmapping.store_url');
+                                foreach ($advert_board as $k => &$v) {
+                                    $v['content'] = $v['content'] ? $store_url . '/uploads' . $v['content'] : '';
+                                }
+                    
+                                if ($board[0]['type'] == 5) {
+                                    if (count($board_id_arr) > 1) {
+                                         
+                                        $advert[$kk] = $advert_board;
+                                    } else {
+                                        $advert = $advert_board;
+                                    }
+                                } else {
+                                    $advert[$kk] = $advert_board[0];
+                                }
+                            }
+                        } else {
+                            // 文字广告
+                            $advert[$kk] = $advert_board[0];
+                        }
+                    }
+                    
+                    $data = $advert ? $advert : '';
+                    $data = json_encode($data);
+                    if ($redis_val == 1) {Trend_Model_Redis::instance()->set($cache_key, $data);}
+                }
+            } catch (Zeed_Exception $e) {
+                $res['status'] = 1;
+                $res['error'] = '查询广告出错。错误信息：' . $e->getMessage();
+                return $res;
+            }
+            
+            if (! empty($data)) {
+            	$res['data'] = json_decode($data,true);
+            } else {
+            	$res['data'] = array();
+            }
+        }
+        
+        return $res;
+    }
+    
+    public static function validate($params)
+    {
+        ksort($params);
+        if (! intval( $params['page_id'] ) && ! intval( $params['board_id'])) {
+            self::$_res['status'] = 1;
+            self::$_res['msg'] = '参数 page_id (广告所有页面) 或 board_id (广告位)未提供';
+            return self::$_res;
+        }
+        self::$_res['data'] = $params;
+        return self::$_res;
+    }
+}
+
+// End ^ Native EOL ^ encoding

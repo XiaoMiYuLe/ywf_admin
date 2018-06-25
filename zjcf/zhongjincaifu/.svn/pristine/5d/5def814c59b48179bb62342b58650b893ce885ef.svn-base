@@ -1,0 +1,103 @@
+<?php
+
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ *
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ *
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+class Api_Cas_CheckCode
+{
+    /**
+     * 返回参数
+     */
+    protected static $_res = array('status' => 0, 'data' => '', 'error' => null);
+    protected static $_allowFields = array('sendto', 'action', 'code');
+    private static $_name = 'send_code_failure'; // 定义短信失效时间
+
+    /**
+     * 接口运行方法
+     *
+     * @param string $params
+     * @throws Zeed_Exception
+     * @return string Ambigous multitype:number, multitype:number string ,
+     *         unknown, multitype:>
+     */
+    public static function run($params = null)
+    {
+        $res = self::validate($params);
+        if ($res['status'] === 0) {
+            try {
+
+                // 获取短信失效时间
+//                if (! $setting = Trend_Model_Setting::instance()->fetchByFV('name', self::$_name)) {
+//                    throw new Zeed_Exception('配置信息缺失');
+//                }
+
+                $where = " sendto = '{$res['data']['sendto']}' AND action = '{$res['data']['action']}' AND code = '{$res['data']['code']}'";
+                $order = ' ctime desc';
+
+                if ($code = Cas_Model_Code::instance()->fetchByWhere($where, $order, 1)) {
+//                    if (time() > (strtotime($code[0]['ctime']) + $setting[0]['val'])) {
+                    if (time() > strtotime($code[0]['exptime'])) {
+
+                        throw new Zeed_Exception('验证信息已失效，请重新发起。');
+                    }
+                } else {
+                    throw new Zeed_Exception('验证失败，请重试。');
+                }
+
+                $res['error'] = "验证通过";
+
+            } catch (Exception $e) {
+                $res['status'] = 1;
+                $res['error'] = "失败。错误信息：" . $e->getMessage();
+                return $res;
+            }
+        }
+
+        return $res;
+    }
+
+    /**
+     * 验证参数
+     */
+    public static function validate($params)
+    {
+        if (! isset($params['sendto'])) {
+            self::$_res['status'] = 1;
+            self::$_res['error'] = '参数 sendto未提供';
+            return self::$_res;
+        }
+        if (! isset($params['action'])) {
+            self::$_res['status'] = 1;
+            self::$_res['error'] = '参数 action未提供';
+            return self::$_res;
+        }
+        if (! isset($params['code'])) {
+            self::$_res['status'] = 1;
+            self::$_res['error'] = '参数 code未提供';
+            return self::$_res;
+        }
+
+        /* 组织数据 */
+        $set = array();
+        foreach (self::$_allowFields as $f) {
+            $set[$f] = isset($params[$f]) ? $params[$f] : null;
+        }
+        self::$_res['data'] = $set;
+
+        return self::$_res;
+    }
+}
+
+// End ^ Native EOL ^ encoding

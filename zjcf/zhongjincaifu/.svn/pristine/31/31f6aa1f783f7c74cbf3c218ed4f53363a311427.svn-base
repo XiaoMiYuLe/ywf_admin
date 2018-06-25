@@ -1,0 +1,66 @@
+<!-- .aside -->
+<aside class="lter aside-md" id="nav">
+    <section class="vbox">
+        <header class="b-b header">
+            <div class="btn-group">
+		        <button type="button" class="btn btn-sm btn-dark btn-icon hide" title="New category"><i class="fa fa-plus"></i></button>
+		        {if $loggedInUser}
+		        <a class="btn btn-icon btn-dark btn-sm" data-toggle="ajaxModal" href="/articlemanual/directory/add?cid={$category_id}" title="添加目录">
+			        <i class="fa fa-plus"></i>
+	            </a>
+	            {/if}
+		        <div class="btn-group m-r">
+		            <button class="btn btn-sm btn-primary dropdown-toggle" data-toggle="dropdown" id="manual_lang_selected">
+                        {foreach from=$navigations.categories item=v key=k}
+                        {if $v.category_id == $category_id || (! $category_id && $k == 0)}
+                        <span class="dropdown-label padder">{$v.title}</span> 
+                        {/if}
+                        {/foreach}
+                        <span class="caret"></span>
+                    </button>
+                    
+                    <ul class="dropdown-menu dropdown-select" id="manual_lang_ul">
+                        {foreach from=$navigations.categories item=v}
+                        <li {if {$category_id} == $v.category_id}class="active"{/if}>
+                            <a href="/articlemanual?cid={$v.category_id}"><input type="radio" name="category_id" value="{$v.category_id}">{$v.title}</a>
+                        </li>
+                        {/foreach}
+                    </ul>
+		        </div>
+		    </div>
+        </header>
+        
+        <section class="scrollable b-r">
+            <ul class="nav nav-pills nav-stacked no-radius" id="left_menu">
+               {foreach from=$navigations.navs item=v}
+                <li id="nav_{$v.content_id}" class="m-t-none-reset {if $v.content_id == $content_id}active{/if}">
+                    <a href="/articlemanual?cid={$category_id}&aid={$v.content_id}" category_id="{$category_id}" content_id="{$v.content_id}" class="b-b load-content left-navigation" >
+                        <i class="fa fa-fw fa-minus-square-o fa-nav-stretch fa-plus-square-o"></i>
+               		    <span class='nav_title_{$v.content_id}'>{$v.title}</span>
+                    </a>
+                    {if $loggedInUser}
+                    <i class="fa fa-pencil pull-right m-t-xs fa-edit-manual" data-toggle="ajaxModal" title="编辑目录" data-toggle="ajaxModal" href="/articlemanual/directory/edit?cid={$category_id}&aid={$v.content_id}"></i>
+                    {/if}
+                
+	                {if $v.children}
+	                <ul class="nav lt nav-three default-hidden">
+	                    {foreach from=$v.children item=vv}
+		                <li id="nav_{$vv.content_id}" class="b-b m-t-none-reset {if $vv.content_id == $content_id}active{/if}">
+		                    <a href="/articlemanual?cid={$category_id}&aid={$vv.content_id}" category_id="{$category_id}" content_id="{$vv.content_id}" class="load-content left-navigation" >
+		                        <i class="fa fa-fw"></i>
+		                        <span class='nav_title_{$vv.content_id}'>&nbsp;&nbsp;&nbsp;&nbsp;{$vv.title}</span>
+		                    </a>
+	                        {if $loggedInUser}
+	                        <i class="fa fa-pencil pull-right m-t-xs fa-edit-manual" title="编辑目录" data-toggle="ajaxModal" href="/articlemanual/directory/edit?cid={$category_id}&aid={$vv.content_id}"></i>
+	                        {/if}
+		                </li>
+	              	    {/foreach}
+	               	</ul>
+	               	{/if}
+               	</li>
+                {/foreach} 
+            </ul>
+        </section>
+    </section>
+</aside>
+<!-- /.aside -->

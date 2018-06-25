@@ -1,0 +1,81 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 更新会员资料（包括各种分组的会员，需过滤空字段）
+ */
+class Api_Cas_UpdateInfo
+{
+    protected static $_res = array('status' => 0, 'error' => '', 'data' => '');
+    
+    public static function run($params = null)
+    {
+        $res = self::validate($params);
+        if ($res['status'] == 0) {
+        	try {
+        		/* 检查用户是否存在 */
+		        if (! $userExists = Cas_Model_User::instance()->fetchByPK($res['data']['userid'])) {
+		            throw new Zeed_Exception('该用户ID不存在');
+		        }
+		        
+		        /* 过滤不需要修改的字段 */
+		        $user = array();
+		        foreach($res['data'] as $k=>$v){
+		            if($v){
+		                $user[$k] = $v;
+		                if($res['data']['region_id']){
+		                    $region = Trend_Model_Region::instance()->fetchByPK($res['data']['region_id']);
+		                    $user['region_name'] = $region[0]['region_name'];
+		                }
+		            }
+		        }
+		       
+		        /* 更改用户信息 */
+		        if (! $userupdate = Cas_Model_User::instance()->updateinfo($user, $res['data']['userid'])) {
+		        	throw new Zeed_Exception('更改用户信息失败');
+		        }
+                $user['token'] = Cas_Token::getTokenByUserId($user['userid']);
+                unset($user['userid']);
+		        $res['data'] = $user;
+        	} catch (Zeed_Exception $e) {
+        		$res['status'] = 1;
+        		$res['error']  = '修改失败。错误信息：' . $e->getMessage();
+        		return $res;
+        	}
+        }
+        return $res;
+    }
+    
+    /**
+     * 验证参数
+     */
+    public static function validate($params)
+    {
+        if (! isset($params['token']) || strlen($params['token']) < 1) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = '参数 token 未提供';
+            return self::$_res;
+        }
+
+        $params['userid'] = Cas_Token::getUserIdByToken($params['token']);
+        unset($params['token']);
+        self::$_res['data'] = $params;
+        return self::$_res;
+    }
+}
+
+// End ^ Native EOL ^ encoding

@@ -1,0 +1,176 @@
+/**
+ * 定义一些常量
+ */
+var content_id = $('#content_id').val();
+
+$(document).ready(function() {
+	/**
+	 * 表单初始化
+	 */
+	if (! content_id) {
+		$('input[name=attachment_ids]:last').val('');
+	}
+	
+	/**
+	 * 切换模板编辑位置
+	 */
+	$('.nav-map').click(function(){
+		/* 模板导航的样式处理 */
+		$('.nav-map').removeClass('active');
+		$(this).addClass('active');
+		
+		/* 切换编辑区域 */
+		$('.edit-map').hide();
+		var nav_id = $(this).attr('id');
+		var edit_id = nav_id.replace('nav', 'edit');
+		$('#' + edit_id).show();
+		
+		if ($('#' + edit_id).attr('id') == 'edit_related') {
+			$('#' + edit_id).css({'display' : 'table'});
+		}
+	});
+	
+	/**
+	 * 处理编辑商品快捷导航显示/隐藏事件
+	 */
+	$('.btn-nav-goods').click(function(){
+		var i = $(this).attr('btn_nav_goods_index');
+		if (i == 1) {
+			switch_btn_nav_goods($('.btn-nav-goods:first'));
+		} else {
+			switch_btn_nav_goods($('.btn-nav-goods:last'));
+		}
+	});
+	
+	/**
+	 * 提交按钮处理
+	 */
+	$(".input-submit").click(function(){
+		var submit_type = $(this).attr("data_submit_type");
+		switch (submit_type) {
+			case 'submit_cancel' : form_cancel(); break;
+			case 'submit_save_back' : back_listing = true; form_submit(); break;
+			case 'submit_save_continue' : back_listing = false; form_submit(); break;
+		}
+	});
+});
+
+
+/**
+ * 处理编辑商品快捷导航显示/隐藏事件
+ */
+function switch_btn_nav_goods(obj) {
+	if (obj.hasClass('active')) {
+		obj.removeClass('active');
+	} else {
+		obj.addClass('active');
+	}
+}
+
+/**
+ * 取消处理
+ */
+function form_cancel() {
+	history.go(-1);
+}
+
+/**
+ * 表单提交处理
+ */
+function form_submit() {
+	notice('edit_notice', img_loading_small, false);
+	
+	/* 必填项校验 */
+	if (! $("#category").val()) {
+		notice('edit_notice', img_delete + ' 请选择所属分类', true, 5000);
+		return false;
+	}
+	if (! $("input[name=name]").val()) {
+		notice('edit_notice', img_delete + ' 商品名称不能为空', true, 50000);
+		return false;
+	}
+	
+	/* 规格校验 */
+	if ($('#is_spec').is(':checked')) {
+		// 若当前分类没有绑定规格，则进行提示，并关闭规格
+		if (! $('#edit_base_spec>.panel-body:last').is(':hidden')) {
+			var confirm_spec = '当前分类尚未绑定任何规格，系统将自动关闭规格项。继续提交，请确定；返回修改，请取消。';
+			if (! confirm(confirm_spec)) {
+				return false;
+			}
+			
+			$('#is_spec').prop('checked', false);
+		} else {
+			// 若当前分类绑定了规格，但提交时没有填写规格项，则进行提示，并阻止提交
+			if (! $('#spec_list > tbody').html()) {
+				notice('edit_notice', img_delete + ' 请至少添加一组规格', true, 50000);
+				return false;
+			}
+		}
+	}
+	
+	/* 处理关联商品信息 */
+	var related_content_ids = '';
+	var related_content_ids_arr = new Array();
+	$('#selected_related_goods').find('ul>li').each(function(k){
+		var content_id_selected = $(this).attr('content_id');
+		related_content_ids_arr[k] = content_id_selected;
+	});
+	if (related_content_ids_arr.length > 0) {
+		related_content_ids = related_content_ids_arr.join(',');
+	}
+	$('input[name=related_content_id]').val(related_content_ids);
+	
+	$(".input-submit").attr('disabled', true);
+	
+	/* 更新编辑器状态 */
+	CKupdate();
+	
+	var saveCallBack;
+	if (content_id == '' || content_id == 0) {
+		saveCallBack = form_save_added;
+	} else {
+		$("#edit_form").attr("action", "/goodsadmin/index/edit");
+		saveCallBack = form_save_edited;
+	}
+	
+	var options = {
+            dataType:'json',
+            timeout:60000,
+            success:saveCallBack,
+            error:ajaxError
+    };
+    $("#edit_form").ajaxSubmit(options);
+    return false;
+}
+
+/**
+ * 添加成功，返回处理
+ */
+function form_save_added(data, textStatus) {
+    if (data.status === 0) {
+        notice('edit_notice', img_done + ' 添加成功!', true, 5000);
+        
+        // 判断是否返回列表管理
+        if (back_listing == true) {
+        	history.back(-1);
+        }
+    } else {
+    	notice('edit_notice', img_delete + " " + data.error, true, 5000);
+    }
+    $(".input-submit").removeAttr('disabled');
+}
+
+
+/**
+ * 编辑成功，返回处理
+ */
+function form_save_edited(data, textStatus) {
+    if (data.status === 0) {
+        notice('edit_notice', img_done + ' 编辑成功!', true, 5000);
+        history.back(-1);
+    } else {
+    	notice('edit_notice', img_delete + " " + data.error, true, 5000);
+    }
+    $(".input-submit").removeAttr('disabled');
+}

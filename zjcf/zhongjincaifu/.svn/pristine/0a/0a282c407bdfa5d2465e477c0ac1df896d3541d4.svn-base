@@ -1,0 +1,113 @@
+{$wrapper_prefix|default}
+
+<script src="{$_STATIC_CDN}/scripts/ckeditor/4.3.1/ckeditor.js" type="text/javascript"></script>
+<script src="{$_STATIC_CDN}/scripts/My97DatePicker/4.8/WdatePicker.js"></script>
+<script src="{$_STATIC_CDN}/scripts/datepicker/js/bootstrap-datepicker.js" type="text/javascript"></script>
+<script src="{$_STATIC_URL}/bts/admin/js/order.edit.js" type="text/javascript"></script>
+
+<section class="hbox stretch">
+    <aside class="aside-md bg-white b-r">
+        <section class="vbox">
+                 <header class="header bg-white b-b clearfix">
+                <div class="row m-t-sm">
+                    <div class="col-sm-8 m-b-xs">
+                        <a href="javascript:;" class="btn btn-sm btn-default" id="button_cancel"><i class="fa fa-reply"></i> 返回</a>
+                    </div>
+                </div>
+            </header>
+            
+              
+            <section class="scrollable wrapper">
+                <section class="panel panel-default portlet-item">
+	                <header class="panel-heading">订单信息</header>
+               
+            
+            <section class="scrollable wrapper panel w-f">
+                <form class="form-horizontal" id="edit_form" action="/goodsadmin/index/add" method="post" enctype="multipart/form-data">
+                    <div class="scrollable">
+                        <section class="col-sm-12 panel-default">
+                        
+                            <div class="form-group">
+                                <label class="col-sm-2 control-label">订单号：</label>
+                                <lable class="col-sm-1 control-label">{$data.order_number}</lable>
+                            </div>
+                            <div class="line line-dashed line-lg pull-in"></div>
+                         
+                           <div class="form-group">
+                               <label class="col-sm-2 control-label">收货人信息：</label>
+                                  		<div class="col-sm-6">
+                                  		  收货人：{$data.consignee_name}</br>
+                                  		详细地址：{$data.consignee_address}</br>
+                                  		  收货人邮编：{$data.consignee_zipcode}</br>
+                                  		收货人邮箱：{$data.consignee_email}</br>
+                                  		  收货人电话：{$data.consignee_mobile}</br>
+                                  		</div>
+                           </div>
+                           <div class="line line-dashed line-lg pull-in"></div>
+                            <div class="form-group">
+                               <label class="col-sm-2 control-label">支付及配送方式：</label>
+                                  		<div class="col-sm-6">
+	                                  		支付方式：{$data.payment}</br>
+	                                  		{if $data.is_refund}
+	                                  		退单状态：{$data.is_refund}
+	                                  		{else}
+	                                  		订单状态：{$data.status}</br>
+	                                  		付款状态：{$data.pay_status}</br>
+	                                  		{/if}
+	                                  		支付类型：{$data.pay_type}
+	                                  		
+                                  		</div>
+                           </div>
+                           <div class="line line-dashed line-lg pull-in"></div>
+                        </section>
+                    </div>
+
+                 </section>
+                      </section>
+                  <section class="panel panel-default portlet-item">
+	                <header class="panel-heading">商品清单</header>     
+                       <table class="table">
+                <thead>
+                  <tr>
+                    <th width="120">商品图片</th>
+                    <th >商品名称 </th>
+                    <th width="140">购买价格</th>
+                    <th width="120">购买数量</th>
+                    <th width="120">是否已经评价</th>
+                    <th width="120">是否延时发货</th>
+                  </tr>
+                </thead>
+                <tbody>
+                {foreach from=$goods item=v}
+                  <tr>
+                    <td><img src="{$v.goods_image}"/></td>
+                    <td>{$v.goods_name}</td>
+                    <td>{$v.buy_price}</td>
+                    <td>{$v.buy_num}</td>
+                    <td>{if $v.is_comment==1}已评价{else}未评价{/if}</td>
+                  </tr>
+                 {/foreach}
+                 <tr>
+                    <td colspan="5" class="text-right no-border"><strong>运费</strong></td>
+                    <td>{$data.freight}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="5" class="text-right no-border"><strong>应付总额</strong></td>
+                    <td><strong>{$data.total_amount}</strong></td>
+                  </tr>
+                </tbody>
+              </table>  
+              </section>
+              
+                    <input type="hidden" name="content_id" id="content_id" value="{$data_id}" />
+                    
+                </form>
+                
+            </section>
+        </section>
+    </aside>
+</section>
+
+<script src="{$_STATIC_CDN}/scripts/file-input/bootstrap-filestyle.min.js"></script>
+
+{$wrapper_suffix|default}

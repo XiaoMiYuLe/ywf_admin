@@ -1,0 +1,52 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2015-07-23
+ * @version    SVN: $
+ */
+
+class Cas_Entity_User extends Zeed_Object
+{
+    public $userid;
+    public $user_group_id;
+    public $user_lv_id;
+    public $username;
+    public $password;
+    public $freeze;
+    public $thirdid;
+    public $salt;
+    public $encrypt;
+    public $tel;
+    public $phone;
+    public $verifiedPhone;
+    public $email;
+    public $verifiedEmail;
+    public $nickname;
+    public $realname;
+    public $idcard;
+    public $gender;
+    public $avatar;
+    public $device_type;
+    public $device_no;
+    public $channelid;
+    public $status;
+    public $is_verify;
+    public $is_del;
+    public $last_login_time;
+    public $last_login_ip;
+    public $ban_etime;
+    public $ctime;
+    public $mtime;
+}
+
+// End ^ Native EOL ^ UTF-8

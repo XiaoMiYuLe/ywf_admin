@@ -1,0 +1,271 @@
+<?php
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ * 
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ * 
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+
+/**
+ * 用户登录
+ * 支持登录方式：手机、邮箱、用户名
+ * 1、手机号 + 密码；
+ * 2、邮箱 + 密码；
+ * 3、用户名 + 密码；
+ * 4、手机号 + 短信验证码（首次登录，自动完成注册）；
+ */
+class Api_Cas_Login
+{
+    protected static $_res = array('status' => 0, 'error' => '', 'data' => '');
+    
+    protected static $_login_type = null; // 定义登录方式，默认为 null，即为常规用户名登录方式
+    
+    private static $_default_encrypt = 'Md5Md5'; // 定义用户密码的加密方式
+    private static $_default_status = 1; // 定义默认启用状态为开启
+    private static $_default_is_verify = 0; // 定义默认审核状态为不通过
+    private static $_user_group_id = 1; // 定义用户默认分组为普通用户组
+    private static $_user_lv_id = 1; // 定义用户默认级别为初级会员
+    
+    public static function run($params = null)
+    {
+        $res = self::validate($params);
+        if ($res['status'] == 0) {
+            $params = $res['data']['params'];
+            $userExists = $res['data']['userExists'];
+            $timenow = DATENOW;
+            $ip = Zeed_Util::clientIP();
+            
+            try {
+                
+                /* 设置用户token */
+                if (empty($userExists['last_login_time'])){
+                    $token = Cas_Token::initToken($userExists['userid']);
+                } else {
+                    $token = Cas_Token::getTokenByUserId($userExists['userid']);
+                    if(!Cas_Token::isTokenTime($token)){
+                        $token = Cas_Token::updateToken($userExists['userid']);
+                    }
+                }
+                
+                /* 更新最后登录的相关信息 */
+                Cas_Model_User::instance()->updateLastLogin($userExists['userid'], $timenow, $ip);
+                
+                /* 密码正确，记录用户登录 log 日志 */
+                $sessionid = Zeed_Session::getID();
+                $logSet = array('ip' => $ip, 'userid' => $userExists['userid'], 'username' => $userExists['username'] ? $userExists['username'] : $params['username'],
+                        'sessionid' => $sessionid, 'ua' => $_SERVER['HTTP_USER_AGENT'], 'ctime' => $timenow);
+                Cas_Model_Login_Log::instance()->addForEntity($logSet);
+                
+                /* 返回用户基本信息 */
+                $url_mapping = Zeed_Config::loadGroup('urlmapping');
+                $user = array(
+                        'token' => $token,
+                        'username' => $userExists['username'],
+                        'nickname' => $userExists['nickname'] ? $userExists['nickname'] : '',
+                        'avatar' => Support_Image_Url::getImageUrl($userExists['avatar'])
+                );
+                
+                $res['data'] = $user;
+            } catch (Zeed_Exception $e) {
+                $res['status'] = 1;
+                $res['error']  = '登录失败。错误信息：' . $e->getMessage();
+            }
+        }
+        
+        return $res;
+    }
+    
+    /**
+     * 验证参数
+     */
+    private static function validate($params)
+    {
+        try {
+            /* 校验必填项 */
+            if (! isset($params['username']) || ! $params['username']) {
+                throw new Zeed_Exception('参数 username 未提供');
+            }
+            
+            /* 检查登录方式 */
+            if (Cas_Validator::email($params['username'])) {
+                self::$_login_type = 'email';
+            } else if (true === Cas_Validator::phone($params['username'])) {
+                self::$_login_type = 'phone';
+            } else if (true === Cas_Validator::idcard($params['username'])) {
+                self::$_login_type = 'idcard';
+            }
+            
+            /* 根据登录方式判断密码或短信验证码的必填项 */
+            if (self::$_login_type == 'phone' && isset($params['code']) && $params['code']) {
+                self::checkForPhoneCode($params);
+            } else {
+                self::checkForPassword($params);
+            }
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = $e->getMessage();
+        }
+        
+        return self::$_res;
+    }
+    
+    /**
+     * 验证参数 - 短信验证码登录方式
+     */
+    private static function checkForPhoneCode($params)
+    {
+        try {
+            if (! $params['code']) {
+                throw new Zeed_Exception('参数 code 未提供');
+            }
+            
+            /* 校验短信验证码 */
+            $result = self::checkCode($params);
+            if ($result['status'] != 0) {
+                throw new Zeed_Exception($result['error']);
+            }
+            
+            /* 若首次登录，则需进行注册 */
+            if (! $userExists = Cas_Model_User::instance()->fetchByUsernameType($params['username'], self::$_login_type)) {
+                $userExists['userid'] = self::register($params);
+                $userExists['username'] = $params['username'];
+            }
+            
+            self::$_res['data']['params'] = $params;
+            self::$_res['data']['userExists'] = $userExists;
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = $e->getMessage();
+        }
+        
+        return self::$_res;
+    }
+    
+    /**
+     * 验证参数 - 常规密码登录方式
+     */
+    private static function checkForPassword($params)
+    {
+        try {
+            if (! isset($params['password']) || ! $params['password']) {
+                throw new Zeed_Exception('参数 password 未提供');
+            }
+            
+            /* 检查同IP出错次数记录 */
+            $errorTryCount = Cas_Model_Login_Error::instance()->getRecentCountByUsername($params['username']);
+            if ($errorTryCount > 10) {
+                throw new Zeed_Exception('已尝试太多次，请过一会儿再试');
+            } else if ($errorTryCount >= 3) {
+                $_SESSION['signinerrorcount'] = max($_SESSION['signinerrorcount'], $errorTryCount);
+            } else {
+                // 检查出错次数记录
+                $errorTryCount = Cas_Model_Login_Error::instance()->getRecentCountByUsername($params['username']);
+                if ($errorTryCount >= 3) {
+                    $_SESSION['signinerrorcount'] = max($_SESSION['signinerrorcount'], $errorTryCount);
+                }
+            }
+            
+            /* 检查用户是否存在 */
+            if (! $userExists = Cas_Model_User::instance()->fetchByUsernameType($params['username'], self::$_login_type)) {
+                throw new Zeed_Exception('该用户不存在');
+            }
+            
+            /* 检查用户密码 */
+            if (! Cas_Model_User::instance()->checkPassword($userExists['userid'], $params['password'])) {
+                $loginErrorSet = array('sessionid' => session_id(), 'username' => $userExists['username'],
+                        'ctime' => date(DATETIME_FORMAT));
+                Cas_Model_Login_Error::instance()->addForEntity($loginErrorSet);
+                throw new Zeed_Exception('用户名或密码不正确');
+            }
+            
+            self::$_res['data']['params'] = $params;
+            self::$_res['data']['userExists'] = $userExists;
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = $e->getMessage();
+        }
+        
+        return self::$_res;
+    }
+    
+    /**
+     * 验证参数 - 短信验证码
+     */
+    private static function checkCode($params)
+    {
+        try {
+            $where = array(
+                    'type' => 'phone',
+                    'action' => 'login',
+                    'sendto' => $params['username'],
+                    'code' => $params['code']
+            );
+            if (! $code_info = Cas_Model_Code::instance()->fetchByWhere($where)) {
+                throw new Zeed_Exception('验证码无效');
+            }
+            if (strtotime($code_info[0]['exptime']) < time()) {
+                throw new Zeed_Exception('验证码已失效，请重新获取验证码');
+            }
+        } catch (Zeed_Exception $e) {
+            self::$_res['status'] = 1;
+            self::$_res['error']  = $e->getMessage();
+        }
+        
+        return self::$_res;
+    }
+    
+    /**
+     * 创建用户
+     *
+     * @param array $params
+     * @return boolean|array
+     */
+    private static function register($set)
+    {
+        $userSet = array(
+                'username' => $set['username'],
+                'user_group_id' => isset($set['user_group_id']) ? $set['user_group_id'] : self::$_user_group_id,
+                'user_lv_id' => isset($set['user_lv_id']) ? $set['user_lv_id'] : self::$_user_lv_id,
+                'password' => '',
+                'phone' => $set['username'],
+                'salt' => '',
+                'encrypt' => self::$_default_encrypt,
+                'email' => $set['email'],
+                'realname' => $set['realname'],
+                'idcard' => $set['idcard'],
+                'gender' => $set['gender'],
+                'birthday' => $set['birthday'],
+                'region_id' => $set['region_id'],
+                'address' => $set['address'],
+                'status' => isset($set['status']) ? $set['status'] : self::$_default_status,
+                'is_verify' => isset($set['is_verify']) ? $set['is_verify'] : self::$_default_is_verify,
+                'ctime' => date(DATETIME_FORMAT),
+                'mtime' => date(DATETIME_FORMAT),
+        );
+        
+        try {
+            $userSet = array_merge($set, $userSet);
+            foreach ($userSet as $k => $v) {
+                if (empty($v)) {
+                    unset($userSet[$k]);
+                }
+            }
+            $userid = Cas_Model_User::instance()->add($userSet);
+        } catch (Zeed_Exception $e) {
+            return false;
+        }
+        
+        return $userid;
+    }
+}
+
+// End ^ Native EOL ^ encoding

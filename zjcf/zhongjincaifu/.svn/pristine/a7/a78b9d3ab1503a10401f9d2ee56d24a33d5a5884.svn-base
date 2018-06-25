@@ -1,0 +1,411 @@
+<?php
+
+/**
+ * Zeed Platform Project
+ * Based on Zeed Framework & Zend Framework.
+ *
+ * LICENSE
+ * http://www.zeed.com.cn/license/
+ *
+ * @category   Zeed
+ * @package    Zeed_ChangeMe
+ * @subpackage ChangeMe
+ * @copyright  Copyright (c) 2010 Zeed Technologies PRC Inc. (http://www.zeed.com.cn)
+ * @author     Zeed Team (http://blog.zeed.com.cn)
+ * @since      2011-3-21
+ * @version    SVN: $Id$
+ */
+class IndexController extends AdvertAdminAbstract
+{
+    public $perpage = 15;
+
+    /**
+     * 广告管理
+     */
+    public function index ()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        /* 接收参数 */
+        $ordername = $this->input->get('ordername', null);
+        $orderby = $this->input->get('orderby', null);
+        $page = (int) $this->input->get('pageIndex', 0);
+        $perpage = $this->input->get('pageSize', $this->perpage);
+        $key = trim($this->input->get('key'));
+        $page_id = (int) $this->input->get('page_id');
+        $board_id = (int) $this->input->get('board_id');
+        
+        /* ajax 加载数据 */
+        if ($this->input->isAJAX()) {
+            $offset = $page * $perpage;
+            $page = $page + 1;
+        
+            $where[] = "1 = 1";
+            if ($page_id) {
+                $where['page_id'] = $page_id;
+            }
+            if ($board_id) {
+                $where['board_id'] = $board_id;
+            }
+            if ($key) {
+                $where[] = "title LIKE '%{$key}%'";
+            }
+        
+            $order = 'ctime DESC';
+            if ($ordername) {
+                $order = $ordername . " " . $orderby;
+            }
+        
+            $content = Advert_Model_Content::instance()->fetchByWhere($where, $order, $perpage, $offset);
+            $data['count'] = Advert_Model_Content::instance()->getCount($where);
+            
+            /* 获取广告的详细信息 */
+            if (! empty($content)) {
+                foreach ($content as &$v) {
+                    /* 获取广告的所属位置信息 */
+                    $page = Advert_Model_Page::instance()->fetchByPK($v['page_id']);
+                    $board = Advert_Model_Board::instance()->fetchByPK($v['board_id']);
+                    
+                    $v['page_name'] = $page[0]['title'];
+                    $v['board_name'] = $board[0]['name'];
+                    
+                    /* 获取绑定资源信息 */
+                    $v['bind_source_name'] = $v['bind_source'] ? $v['bind_source'] : '';
+                    if ($v['bind_type'] == self::BIND_SOURCE_TYPE_GOODS) {
+                        $bind_source = Goods_Model_Content::instance()->fetchByPK($v['bind_source']);
+                        empty($bind_source) ? '' : $v['bind_source_name'] = $bind_source[0]['name'];
+                    } elseif ($v['bind_type'] == self::BIND_SOURCE_TYPE_ARTICLE) {
+                        $bind_source = Article_Model_Content::instance()->fetchByPK($v['bind_source']);
+                        empty($bind_source) ? '' : $v['bind_source_name'] = $bind_source[0]['title'];
+                    }
+                }
+            }
+            
+            $data['content'] = $content ? $content : array();
+        }
+        
+        /* 获取所有页面信息 */
+        $data['pages'] = Advert_Model_Page::instance()->fetchAll()->toArray();
+        
+        $data['ordername'] = $ordername;
+        $data['orderby'] = $orderby;
+        $data['page'] = $page;
+        $data['perpage'] = $perpage;
+        
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'index.index');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+
+    /**
+     * 添加
+     */
+    public function add ()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        if ($this->input->isPOST()) {
+            $this->addSave();
+            return self::RS_SUCCESS;
+        }
+        
+        /* 获取所有页面信息 */
+        $data['pages'] = Advert_Model_Page::instance()->fetchAll()->toArray();
+        
+        /* 获取功能模块 */
+        $app = Admin_Model_App::instance()->fetchByWhere("appkey = 'article' or appkey = 'goods'", null);
+        if(! empty($app)) {
+            foreach($app as &$v) {
+                if ($v['appkey'] == 'article') {
+                    $v['appkeytype'] = 3;
+                }
+                if ($v['appkey'] == 'goods') {
+                    $v['appkeytype'] = 2;
+                }
+            }
+        }
+        $data['app'] = empty($app) ? array() : $app;
+        
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'index.edit');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+
+    /**
+     * 添加 - 保存
+     */
+    public function addSave ()
+    {
+        $set = $this->_validate();
+        if ($set['status'] == 0) {
+            try {
+            	if ($set['data']['type'] != 2) {
+            	    $files = $set['data']['attachment'];
+            	    if ($files['tmp_name']) {
+            	        $attachment = Trend_Attachment::add($files['tmp_name']);
+            	        if ($files['error'] == UPLOAD_ERR_OK) {
+            	            $set['data']['attachmentid'] = $attachment['attachmentid'];
+            	        } else {
+            	            throw new Zeed_Exception('好像发生一些意外错误呢');
+            	        }
+            	    } else {
+            	        unset($set['data']['attachmentid']);
+            	    }
+            	}
+                Advert_Model_Content::instance()->addForEntity($set['data']);
+            } catch (Zeed_Exception $e) {
+                $this->setStatus(1);
+                $this->setError('Add advert failed : ' . $e->getMessage());
+                return false;
+            }
+            return true;
+        }
+        
+        $this->setStatus($set['status']);
+        $this->setError($set['error']);
+        return false;
+    }
+
+    /**
+     * 编辑
+     */
+    public function edit ()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        if ($this->input->isPOST()) {
+            $this->editSave();
+            return self::RS_SUCCESS;
+        }
+        
+        $content_id = (int) $this->input->query('content_id');
+        
+        if (! $content = Advert_Model_Content::instance()->fetchByPK($content_id)) {
+        	$this->setStatus(1);
+            $this->setError('The advert is not exist.');
+            return self::RS_SUCCESS;
+        }
+        $content = $content[0];
+        
+        /* 获取广告相关附件 */
+        if ($content['attachmentid']) {
+        	$attachment = Trend_Model_Attachment::instance()->fetchByAttchmentid($content['attachmentid']);
+        	$data['attachment'] = $attachment[0];
+        	
+        	// 处理附件地址
+        	$data['attachment']['filepath'] = Support_Image_Url::getImageUrl($data['attachment']['filepath']);
+        }
+
+        /* 获取所有页面信息 */
+        $data['pages'] = Advert_Model_Page::instance()->fetchAll()->toArray();
+        
+        /* 获取功能模块 */
+        $app = Admin_Model_App::instance()->fetchByWhere("appkey = 'article' or appkey = 'goods'", null);
+        if (! empty($app)) {
+            foreach($app as &$v) {
+                if ($v['appkey'] == 'article') {
+                    $v['appkeytype'] = 3;
+                }
+                if ($v['appkey'] == 'goods') {
+                    $v['appkeytype'] = 2;
+                }
+            }
+        }
+        
+        $data['content'] = $content;
+        $data['op'] = 'edit';
+        $data['content_id'] = $content_id;
+        $this->setData('data', $data);
+        $this->addResult(self::RS_SUCCESS, 'php', 'index.edit');
+        return parent::multipleResult(self::RS_SUCCESS);
+    }
+
+    /**
+     * 编辑 - 保存
+     */
+    public function editSave ()
+    {
+        $set = $this->_validate();
+        if ($set['status'] == 0) {
+            try {
+                if ($set['data']['type'] != 2) {
+            	    $files = $set['data']['attachment'];
+            	    if ($files && $files['tmp_name']) {
+            	        $attachment = Trend_Attachment::add($files['tmp_name']);
+            	        if ($files['error'] == UPLOAD_ERR_OK) {
+            	            $set['data']['attachmentid'] = $attachment['attachmentid'];
+            	        } else {
+            	            throw new Zeed_Exception('好像发生一些意外错误呢');
+            	        }
+            	    } else {
+            	        unset($set['data']['attachmentid']);
+            	    }
+            	}
+                Advert_Model_Content::instance()->updateForEntity($set['data'], $set['data']['content_id']);
+            } catch (Zeed_Exception $e) {
+                $this->setStatus(1);
+                $this->setError('Edit advert failed : ' . $e->getMessage());
+                return false;
+            }
+            return true;
+        }
+        
+        $this->setStatus($set['status']);
+        $this->setError($set['error']);
+        return false;
+    }
+
+    /**
+     * 保存广告 － 校验
+     */
+    private function _validate ()
+    {
+        $res = array('status' => 0, 'error' => null, 'data' => null);
+        
+        $res['data'] = array(
+                'content_id' => $this->input->post('content_id', 0),
+        		'board_id' => $this->input->post('board_id'),
+                'type' => $this->input->post('type'),
+        		'page_id' => $this->input->post('page_id'),
+                'title' => $this->input->post('title'),
+                'content' => $this->input->post('content'),
+                'attachment' => $_FILES['attachment'],
+		        'bind_type' => $this->input->post('bind_type'),
+		        'bind_source' => $this->input->post('bind_source'),
+		        'count' => $this->input->post('count'),
+		        'sort_order' => $this->input->post('sort_order'),
+		        'status' => $this->input->post('status'),
+		        'start_time' => $this->input->post('start_time'),
+		        'end_time' => $this->input->post('end_time'),
+		        'mtime' => date(DATETIME_FORMAT)
+        );
+        
+        /* 数据验证 */
+    	if (! $res['data']['page_id']) {
+            $res['status'] = 1;
+            $res['error'] = '请选择所属页面';
+            return $res;
+        }
+        
+    	if (! $res['data']['board_id']) {
+            $res['status'] = 1;
+            $res['error'] = '请选择广告位';
+            return $res;
+        }
+        
+    	if (! $res['data']['type']) {
+            $res['status'] = 1;
+            $res['error'] = '请选择广告类型';
+            return $res;
+        }
+        
+    	if (! $res['data']['title']) {
+            $res['status'] = 1;
+            $res['error'] = '广告名称不能为空';
+            return $res;
+        }
+        
+        /* 处理添加时间 */
+        if (! $res['data']['content_id']) {
+            $res['data']['ctime'] = $res['data']['mtime'];
+        }
+        
+        /* 处理资源内容 */
+        $res['data']['bind_source'] = $res['data']['bind_source'][$res['data']['bind_type'] - 1];
+        
+        return $res;
+    }
+    
+    /**
+     * 发布
+     */
+    public function publish ()
+    {
+    	$this->addResult(self::RS_SUCCESS, 'json');
+    
+    	if (! $this->input->isPOST()) {
+    		$this->setStatus(1);
+    		$this->setError('请勿非法操作');
+    		return self::RS_SUCCESS;
+    	}
+    
+    	$content_id = (int) $this->input->post('id');
+    
+    	/* 获取内容 */
+    	if (! $content = Advert_Model_Content::instance()->fetchByPK($content_id)) {
+    		$this->setStatus(1);
+    		$this->setError('查无此数据');
+    		return self::RS_SUCCESS;
+    	}
+    
+    	/* 执行审核 */
+    	if ($content[0]['status'] == 1) {
+    		$status = 0;
+    	} else {
+    		$status = 1;
+    	}
+    	$set = array('status' => $status);
+    	Advert_Model_Content::instance()->updateForEntity($set, $content_id);
+    
+    	return self::RS_SUCCESS;
+    }
+
+    /**
+     * 删除广告
+     */
+    public function delete ()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        if (! $this->input->isPOST()) {
+            $this->setStatus(1);
+            $this->setError('请勿非法操作');
+            return self::RS_SUCCESS;
+        }
+        $content_id = (int) $this->input->query('content_id');
+        
+        if (! $content_id) {
+            $this->setStatus(1);
+            $this->setError('缺少参数，或参数错误');
+            return self::RS_SUCCESS;
+        }
+        
+        try {
+            Advert_Model_Content::instance()->deleteByPK($content_id);
+        } catch (Zeed_Exception $e) {
+            $this->setStatus(1);
+            $this->setError('删除广告失败 : ' . $e->getMessage());
+            return self::RS_SUCCESS;
+        }
+        
+        $this->setData('data', '删除成功');
+        return self::RS_SUCCESS;
+    }
+    
+    /**
+     * 动态加载广告位
+     */
+    public function getBoard()
+    {
+        $this->addResult(self::RS_SUCCESS, 'json');
+        
+        $page_id = (int) $this->input->query('page_id');
+        $type = (int) $this->input->query('type');
+        
+        /* 查询符合条件的广告位 */
+        $where = array('status' => 1);
+        if ($page_id) {
+            $where['page_id'] = $page_id;
+        }
+        if ($type) {
+            $where['type'] = $type;
+        }
+        $order = "sort_order ASC";
+        $data['boards'] = Advert_Model_Board::instance()->fetchByWhere($where, $order);
+        
+        $this->setData('data', $data);
+        return self::RS_SUCCESS;
+    }
+}
+
+// End ^ Native EOL ^ UTF-8
