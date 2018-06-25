@@ -22,31 +22,35 @@ defined('ZEED_DB_TABLEPREFIX') || define('ZEED_DB_TABLEPREFIX', '');
 
 /**
  * 数据库配置信息
- * 
+ *
  * default - 默认数据库
  */
 return array(
-        'default' => array(
-                'adapter' => 'PDO_MYSQL', 
-                'host' => 'rdsbib620f206m7h9jox.mysql.rds.aliyuncs.com', 
-                'username' => 'ywf', 
-                'password' => 'ywf360sql', 
-                'dbname' => 'zjcf', 
-                'prefix' => '', 
-                'charset' => 'utf8', 
-                'profiler' => 1
-        ), 
+    'default' => array(
+        'adapter' => 'PDO_MYSQL',
+//                'host' => 'rdsbib620f206m7h9jox.mysql.rds.aliyuncs.com',
+//                'username' => 'ywf',
+//                'password' => 'ywf360sql',
+//                'dbname' => 'zjcf',
+        'host' => '192.168.1.195',
+        'username' => 'root',
+        'password' => '1qaz)OKM',
+        'dbname' => 'zjcf',
+        'prefix' => '',
+        'charset' => 'utf8',
+        'profiler' => 1
+    ),
 
-        /** 
-         * 这里仅仅是配置, 不兼容Zend_Db_Adapter
-         */
-        'redis' => array(
-                'host' => 'localhost',
-                'port' => '6379',
-                'db' => 0,
-                // 生命周期，0 为无限制
-                'expire' => 0 
-        )
+    /**
+     * 这里仅仅是配置, 不兼容Zend_Db_Adapter
+     */
+    'redis' => array(
+        'host' => 'localhost',
+        'port' => '6379',
+        'db' => 0,
+        // 生命周期，0 为无限制
+        'expire' => 0
+    )
 );
 
 // End ^ Native EOL ^ UTF-8

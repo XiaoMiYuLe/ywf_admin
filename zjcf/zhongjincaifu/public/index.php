@@ -14,7 +14,7 @@
  * @since      July 6, 2015
  * @version    SVN: $Id$
  */
-
+//var_dump("1111");
 define('ZEED_BOOT', dirname(__FILE__) . '/');
 define('ZEED_IN_PRODUCTION', 0);
 define('ZEED_ROOT', str_replace('\\', '/', realpath(ZEED_BOOT . '../') . '/'));
@@ -30,7 +30,7 @@ require_once 'install/setup.php';
 if (file_exists(ZEED_BOOT . '/../config/env.php')) {
     include ZEED_BOOT . '/../config/env.php';
 } else {
-    error_reporting(E_ALL);
+//    error_reporting(E_ALL);
 }
 
 require_once 'Zeed.php';

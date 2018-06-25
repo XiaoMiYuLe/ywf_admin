@@ -16,8 +16,10 @@
 */
 
 $config['site_name'] = '中金财富';
-$config['store_url'] = 'http://zjcfapi.ywf360.com'; // 本地地址
-$config['store_url_login'] = 'http://zjcfapi.ywf360.com'; // 登录地址
+//$config['store_url'] = 'http://zjcfapi.ywf360.com'; // 本地地址
+//$config['store_url_login'] = 'http://zjcfapi.ywf360.com'; // 登录地址
+$config['store_url'] = 'http://admin.ywf.com'; // 本地地址
+$config['store_url_login'] = 'http://admin.ywf.com'; // 登录地址
 $config['static_url'] = '/static';
 $config['upload_url'] = '/uploads'; // 跟配置的别名保持一致
 $config['callback_url'] = 'http://120.27.166.159';// 回调urlhttp://120.27.166.159
